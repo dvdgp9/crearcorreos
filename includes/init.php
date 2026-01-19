@@ -14,6 +14,7 @@ require_once __DIR__ . '/Database.php';
 require_once __DIR__ . '/Auth.php';
 require_once __DIR__ . '/PleskApi.php';
 require_once __DIR__ . '/EmailLog.php';
+require_once __DIR__ . '/PasswordShare.php';
 
 // Función helper para escapar HTML
 function e(string $string): string {
