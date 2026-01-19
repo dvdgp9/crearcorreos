@@ -11,6 +11,28 @@ $plesk = new PleskApi();
 $domains = [];
 $error = '';
 $success = '';
+$createdEmails = []; // Para almacenar correos recién creados con contraseñas
+
+// Función para generar contraseña segura
+function generateSecurePassword(int $length = 12): string {
+    $lower = 'abcdefghijklmnopqrstuvwxyz';
+    $upper = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
+    $numbers = '0123456789';
+    $special = '!@#$%&*';
+    
+    $password = '';
+    $password .= $lower[random_int(0, strlen($lower) - 1)];
+    $password .= $upper[random_int(0, strlen($upper) - 1)];
+    $password .= $numbers[random_int(0, strlen($numbers) - 1)];
+    $password .= $special[random_int(0, strlen($special) - 1)];
+    
+    $allChars = $lower . $upper . $numbers . $special;
+    for ($i = 4; $i < $length; $i++) {
+        $password .= $allChars[random_int(0, strlen($allChars) - 1)];
+    }
+    
+    return str_shuffle($password);
+}
 
 // Obtener dominios disponibles
 try {
@@ -29,51 +51,87 @@ if ($flash) {
     }
 }
 
-// Procesar creación de correo
-if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['action'] === 'create_email') {
-    $username = trim($_POST['username'] ?? '');
+// Procesar creación masiva de correos
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['action'] === 'create_bulk') {
+    $usernames = trim($_POST['usernames'] ?? '');
     $domain = trim($_POST['domain'] ?? '');
-    $password = $_POST['password'] ?? '';
-    $confirmPassword = $_POST['confirm_password'] ?? '';
+    $quota = trim($_POST['quota'] ?? '');
+    $outgoingLimit = $_POST['outgoing_limit'] ?? '';
     
-    // Validaciones
-    if (empty($username) || empty($domain) || empty($password)) {
-        $error = 'Todos los campos son obligatorios';
-    } elseif (!preg_match('/^[a-zA-Z0-9._-]+$/', $username)) {
-        $error = 'El nombre de usuario solo puede contener letras, números, puntos, guiones y guiones bajos';
-    } elseif (strlen($password) < 8) {
-        $error = 'La contraseña debe tener al menos 8 caracteres';
-    } elseif ($password !== $confirmPassword) {
-        $error = 'Las contraseñas no coinciden';
+    if (empty($usernames) || empty($domain)) {
+        $error = 'Debes especificar al menos un usuario y un dominio';
     } else {
-        $emailAddress = $username . '@' . $domain;
+        // Parsear usuarios (uno por línea o separados por coma)
+        $userList = preg_split('/[\n,]+/', $usernames);
+        $userList = array_map('trim', $userList);
+        $userList = array_filter($userList); // Eliminar vacíos
         
-        try {
-            $result = $plesk->createMailbox($emailAddress, $password);
+        if (empty($userList)) {
+            $error = 'No se encontraron usuarios válidos';
+        } else {
+            $successCount = 0;
+            $errorCount = 0;
+            $errors = [];
             
-            // Registrar en log
-            EmailLog::log(
-                Auth::getUserId(),
-                $emailAddress,
-                $domain,
-                'success'
-            );
+            // Convertir límite de salida a int o null
+            $outgoingLimitInt = null;
+            if ($outgoingLimit !== '' && $outgoingLimit !== 'default') {
+                $outgoingLimitInt = (int) $outgoingLimit;
+            }
             
-            setFlash('success', "Correo <strong>{$emailAddress}</strong> creado correctamente");
-            header('Location: dashboard.php');
-            exit;
+            // Convertir cuota vacía a null
+            $quotaValue = !empty($quota) ? $quota : null;
             
-        } catch (Exception $e) {
-            $error = 'Error al crear el correo: ' . $e->getMessage();
+            foreach ($userList as $username) {
+                // Validar nombre de usuario
+                if (!preg_match('/^[a-zA-Z0-9._-]+$/', $username)) {
+                    $errors[] = "Usuario inválido: {$username}";
+                    $errorCount++;
+                    continue;
+                }
+                
+                $emailAddress = $username . '@' . $domain;
+                $password = generateSecurePassword(12);
+                
+                try {
+                    $result = $plesk->createMailbox($emailAddress, $password, $quotaValue, $outgoingLimitInt);
+                    
+                    // Guardar para mostrar al usuario
+                    $createdEmails[] = [
+                        'email' => $emailAddress,
+                        'password' => $password
+                    ];
+                    
+                    // Registrar en log
+                    EmailLog::log(
+                        Auth::getUserId(),
+                        $emailAddress,
+                        $domain,
+                        'success'
+                    );
+                    
+                    $successCount++;
+                    
+                } catch (Exception $e) {
+                    $errors[] = "{$emailAddress}: " . $e->getMessage();
+                    $errorCount++;
+                    
+                    EmailLog::log(
+                        Auth::getUserId(),
+                        $emailAddress,
+                        $domain,
+                        'error',
+                        $e->getMessage()
+                    );
+                }
+            }
             
-            // Registrar error en log
-            EmailLog::log(
-                Auth::getUserId(),
-                $emailAddress,
-                $domain,
-                'error',
-                $e->getMessage()
-            );
+            if ($successCount > 0) {
+                $success = "Se crearon <strong>{$successCount}</strong> correo(s) correctamente.";
+            }
+            if ($errorCount > 0) {
+                $error = "Hubo <strong>{$errorCount}</strong> error(es): " . implode('; ', $errors);
+            }
         }
     }
 }
@@ -115,63 +173,110 @@ try {
                 <div class="alert alert-success"><?= $success ?></div>
             <?php endif; ?>
             
-            <div class="grid">
-                <!-- Formulario de creación -->
-                <div class="card">
-                    <h2>Crear nueva cuenta de correo</h2>
+            <?php if (!empty($createdEmails)): ?>
+                <!-- Listado de correos creados con contraseñas -->
+                <div class="card card-highlight">
+                    <h2>✅ Correos creados - ¡Copia las contraseñas!</h2>
+                    <p class="text-muted">Estas contraseñas no se guardan. Cópialas ahora.</p>
                     
-                    <form method="POST" action="" class="form-create-email">
-                        <input type="hidden" name="action" value="create_email">
+                    <div class="copy-all-container">
+                        <button type="button" class="btn btn-sm btn-primary" onclick="copyAllToClipboard()">
+                            📋 Copiar todo
+                        </button>
+                    </div>
+                    
+                    <table class="table table-passwords" id="passwords-table">
+                        <thead>
+                            <tr>
+                                <th>Correo</th>
+                                <th>Contraseña</th>
+                                <th></th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <?php foreach ($createdEmails as $created): ?>
+                                <tr>
+                                    <td><code><?= e($created['email']) ?></code></td>
+                                    <td><code class="password-text"><?= e($created['password']) ?></code></td>
+                                    <td>
+                                        <button type="button" class="btn btn-sm btn-outline" 
+                                                onclick="copyToClipboard('<?= e($created['email']) ?>', '<?= e($created['password']) ?>')">
+                                            Copiar
+                                        </button>
+                                    </td>
+                                </tr>
+                            <?php endforeach; ?>
+                        </tbody>
+                    </table>
+                </div>
+            <?php endif; ?>
+            
+            <div class="grid">
+                <!-- Formulario de creación masiva -->
+                <div class="card">
+                    <h2>Crear cuentas de correo</h2>
+                    <p class="text-muted">Introduce uno o más usuarios (uno por línea o separados por coma)</p>
+                    
+                    <form method="POST" action="">
+                        <input type="hidden" name="action" value="create_bulk">
                         
                         <div class="form-group">
-                            <label for="username">Usuario</label>
-                            <div class="input-group">
-                                <input type="text" id="username" name="username" required 
-                                       pattern="[a-zA-Z0-9._-]+"
-                                       placeholder="nombre.usuario"
-                                       value="<?= e($_POST['username'] ?? '') ?>">
-                                <span class="input-addon">@</span>
-                                <select name="domain" id="domain" required>
-                                    <option value="">Selecciona dominio</option>
-                                    <?php foreach ($domains as $domain): ?>
-                                        <option value="<?= e($domain['name']) ?>" 
-                                            <?= (($_POST['domain'] ?? '') === $domain['name']) ? 'selected' : '' ?>>
-                                            <?= e($domain['name']) ?>
-                                        </option>
-                                    <?php endforeach; ?>
-                                </select>
-                            </div>
+                            <label for="usernames">Usuarios</label>
+                            <textarea id="usernames" name="usernames" rows="4" required 
+                                      placeholder="usuario1&#10;usuario2&#10;nombre.apellido"><?= e($_POST['usernames'] ?? '') ?></textarea>
+                            <small class="text-muted">Solo la parte antes del @. Se generará contraseña automática.</small>
+                        </div>
+                        
+                        <div class="form-group">
+                            <label for="domain">Dominio</label>
+                            <select name="domain" id="domain" required>
+                                <option value="">Selecciona dominio</option>
+                                <?php foreach ($domains as $d): ?>
+                                    <option value="<?= e($d['name']) ?>" 
+                                        <?= (($_POST['domain'] ?? '') === $d['name']) ? 'selected' : '' ?>>
+                                        @<?= e($d['name']) ?>
+                                    </option>
+                                <?php endforeach; ?>
+                            </select>
                         </div>
                         
                         <div class="form-row">
                             <div class="form-group">
-                                <label for="password">Contraseña</label>
-                                <input type="password" id="password" name="password" required 
-                                       minlength="8" placeholder="Mínimo 8 caracteres">
+                                <label for="quota">Tamaño máximo buzón</label>
+                                <select name="quota" id="quota">
+                                    <option value="">Por defecto del servidor</option>
+                                    <option value="100M" <?= (($_POST['quota'] ?? '') === '100M') ? 'selected' : '' ?>>100 MB</option>
+                                    <option value="250M" <?= (($_POST['quota'] ?? '') === '250M') ? 'selected' : '' ?>>250 MB</option>
+                                    <option value="500M" <?= (($_POST['quota'] ?? '') === '500M') ? 'selected' : '' ?>>500 MB</option>
+                                    <option value="1G" <?= (($_POST['quota'] ?? '') === '1G') ? 'selected' : '' ?>>1 GB</option>
+                                    <option value="2G" <?= (($_POST['quota'] ?? '') === '2G') ? 'selected' : '' ?>>2 GB</option>
+                                    <option value="5G" <?= (($_POST['quota'] ?? '') === '5G') ? 'selected' : '' ?>>5 GB</option>
+                                    <option value="-1" <?= (($_POST['quota'] ?? '') === '-1') ? 'selected' : '' ?>>Ilimitado</option>
+                                </select>
                             </div>
                             
                             <div class="form-group">
-                                <label for="confirm_password">Confirmar contraseña</label>
-                                <input type="password" id="confirm_password" name="confirm_password" required 
-                                       minlength="8" placeholder="Repite la contraseña">
+                                <label for="outgoing_limit">Límite emails salientes/hora</label>
+                                <select name="outgoing_limit" id="outgoing_limit">
+                                    <option value="">Por defecto del servidor</option>
+                                    <option value="50" <?= (($_POST['outgoing_limit'] ?? '') === '50') ? 'selected' : '' ?>>50/hora</option>
+                                    <option value="100" <?= (($_POST['outgoing_limit'] ?? '') === '100') ? 'selected' : '' ?>>100/hora</option>
+                                    <option value="200" <?= (($_POST['outgoing_limit'] ?? '') === '200') ? 'selected' : '' ?>>200/hora</option>
+                                    <option value="500" <?= (($_POST['outgoing_limit'] ?? '') === '500') ? 'selected' : '' ?>>500/hora</option>
+                                    <option value="-1" <?= (($_POST['outgoing_limit'] ?? '') === '-1') ? 'selected' : '' ?>>Ilimitado</option>
+                                </select>
                             </div>
                         </div>
                         
-                        <div class="form-group">
-                            <button type="button" class="btn btn-sm btn-outline" onclick="generatePassword()">
-                                Generar contraseña segura
-                            </button>
-                        </div>
-                        
                         <button type="submit" class="btn btn-primary btn-block">
-                            Crear cuenta de correo
+                            Crear cuenta(s) de correo
                         </button>
                     </form>
                 </div>
                 
                 <!-- Últimos correos creados -->
                 <div class="card">
-                    <h2>Últimos correos creados</h2>
+                    <h2>Historial reciente</h2>
                     
                     <?php if (empty($recentEmails)): ?>
                         <p class="text-muted">No hay correos creados todavía</p>
@@ -190,10 +295,10 @@ try {
                                         <td><?= e($log['email_address']) ?></td>
                                         <td>
                                             <span class="badge badge-<?= $log['status'] === 'success' ? 'success' : 'error' ?>">
-                                                <?= $log['status'] === 'success' ? 'Creado' : 'Error' ?>
+                                                <?= $log['status'] === 'success' ? 'OK' : 'Error' ?>
                                             </span>
                                         </td>
-                                        <td><?= date('d/m/Y H:i', strtotime($log['created_at'])) ?></td>
+                                        <td><?= date('d/m H:i', strtotime($log['created_at'])) ?></td>
                                     </tr>
                                 <?php endforeach; ?>
                             </tbody>
@@ -205,23 +310,27 @@ try {
     </main>
     
     <script>
-        function generatePassword() {
-            const length = 12;
-            const charset = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789!@#$%^&*";
-            let password = "";
-            for (let i = 0; i < length; i++) {
-                password += charset.charAt(Math.floor(Math.random() * charset.length));
-            }
-            document.getElementById('password').value = password;
-            document.getElementById('confirm_password').value = password;
+        function copyToClipboard(email, password) {
+            const text = email + '\t' + password;
+            navigator.clipboard.writeText(text).then(() => {
+                alert('Copiado: ' + email);
+            });
+        }
+        
+        function copyAllToClipboard() {
+            const table = document.getElementById('passwords-table');
+            const rows = table.querySelectorAll('tbody tr');
+            let text = '';
             
-            // Mostrar contraseña temporalmente
-            document.getElementById('password').type = 'text';
-            document.getElementById('confirm_password').type = 'text';
-            setTimeout(() => {
-                document.getElementById('password').type = 'password';
-                document.getElementById('confirm_password').type = 'password';
-            }, 3000);
+            rows.forEach(row => {
+                const email = row.querySelector('td:first-child code').textContent;
+                const password = row.querySelector('.password-text').textContent;
+                text += email + '\t' + password + '\n';
+            });
+            
+            navigator.clipboard.writeText(text.trim()).then(() => {
+                alert('¡Copiados ' + rows.length + ' correos al portapapeles!\n\nFormato: email[TAB]contraseña');
+            });
         }
     </script>
 </body>

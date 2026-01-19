@@ -312,3 +312,59 @@ body {
 .text-muted {
     color: var(--gray-500);
 }
+
+/* Textarea */
+textarea {
+    width: 100%;
+    padding: 0.75rem 1rem;
+    border: 1px solid var(--gray-300);
+    border-radius: var(--radius);
+    font-size: 1rem;
+    font-family: inherit;
+    resize: vertical;
+    transition: border-color 0.2s, box-shadow 0.2s;
+}
+
+textarea:focus {
+    outline: none;
+    border-color: var(--primary);
+    box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.1);
+}
+
+small.text-muted {
+    display: block;
+    margin-top: 0.25rem;
+    font-size: 0.75rem;
+}
+
+/* Card highlight */
+.card-highlight {
+    border: 2px solid var(--success);
+    background: #f0fdf4;
+}
+
+.card-highlight h2 {
+    color: var(--success);
+}
+
+/* Passwords table */
+.table-passwords code {
+    background: var(--gray-100);
+    padding: 0.25rem 0.5rem;
+    border-radius: 4px;
+    font-size: 0.875rem;
+}
+
+.table-passwords .password-text {
+    font-family: 'Courier New', monospace;
+    letter-spacing: 0.5px;
+}
+
+.copy-all-container {
+    margin-bottom: 1rem;
+}
+
+/* Code styling */
+code {
+    font-family: 'SF Mono', Monaco, 'Courier New', monospace;
+}

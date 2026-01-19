@@ -88,15 +88,31 @@ class PleskApi {
     }
     
     /**
-     * Crear cuenta de correo
+     * Crear cuenta de correo con opciones avanzadas
+     * 
+     * @param string $email Dirección de correo
+     * @param string $password Contraseña
+     * @param string|null $quota Tamaño del buzón (ej: '50M', '1G', '-1' para ilimitado)
+     * @param int|null $outgoingLimit Límite de mensajes salientes por hora (-1 para ilimitado)
      */
-    public function createMailbox(string $email, string $password, bool $mailbox = true): array {
-        // Usar CLI: plesk bin mail --create email -passwd password -mailbox true
+    public function createMailbox(string $email, string $password, ?string $quota = null, ?int $outgoingLimit = null): array {
         $params = [
             '--create', $email,
             '-passwd', $password,
-            '-mailbox', $mailbox ? 'true' : 'false'
+            '-mailbox', 'true'
         ];
+        
+        // Añadir cuota si se especifica
+        if ($quota !== null && $quota !== '') {
+            $params[] = '-mbox_quota';
+            $params[] = $quota;
+        }
+        
+        // Añadir límite de mensajes salientes si se especifica
+        if ($outgoingLimit !== null) {
+            $params[] = '-outgoing-messages-mbox-limit';
+            $params[] = (string) $outgoingLimit;
+        }
         
         $result = $this->executeCliCommand('mail', $params);
         
