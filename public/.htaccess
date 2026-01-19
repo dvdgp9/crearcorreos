@@ -1,17 +1,5 @@
-# Activar rewrite
-RewriteEngine On
-
-# Redirigir a HTTPS
-RewriteCond %{HTTPS} off
-RewriteRule ^(.*)$ https://%{HTTP_HOST}%{REQUEST_URI} [L,R=301]
-
 # Denegar acceso a archivos sensibles
 <FilesMatch "^\.">
     Order allow,deny
     Deny from all
 </FilesMatch>
-
-# Configuración de PHP
-php_value session.cookie_httponly 1
-php_value session.cookie_secure 1
-php_value session.use_strict_mode 1
