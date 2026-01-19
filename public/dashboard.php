@@ -8,10 +8,11 @@ require_once __DIR__ . '/../includes/init.php';
 Auth::requireLogin();
 
 $plesk = new PleskApi();
+$passwordShare = new PasswordShare();
 $domains = [];
 $error = '';
 $success = '';
-$createdEmails = []; // Para almacenar correos recién creados con contraseñas
+$createdEmails = []; // Para almacenar correos recién creados con contraseñas y enlaces
 
 // Función para generar contraseña segura
 function generateSecurePassword(int $length = 12): string {
@@ -96,10 +97,19 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
                 try {
                     $result = $plesk->createMailbox($emailAddress, $password, $quotaValue, $outgoingLimitInt);
                     
+                    // Generar enlace seguro para compartir
+                    $shareLink = null;
+                    try {
+                        $shareLink = $passwordShare->createShareLink($password);
+                    } catch (Exception $linkError) {
+                        // Si falla el enlace, continuamos sin él
+                    }
+                    
                     // Guardar para mostrar al usuario
                     $createdEmails[] = [
                         'email' => $emailAddress,
-                        'password' => $password
+                        'password' => $password,
+                        'link' => $shareLink
                     ];
                     
                     // Registrar en log
@@ -174,14 +184,17 @@ try {
             <?php endif; ?>
             
             <?php if (!empty($createdEmails)): ?>
-                <!-- Listado de correos creados con contraseñas -->
+                <!-- Listado de correos creados con contraseñas y enlaces -->
                 <div class="card card-highlight">
-                    <h2>✅ Correos creados - ¡Copia las contraseñas!</h2>
-                    <p class="text-muted">Estas contraseñas no se guardan. Cópialas ahora.</p>
+                    <h2>✅ Correos creados - ¡Comparte los enlaces!</h2>
+                    <p class="text-muted">Los enlaces son de un solo uso. Una vez abiertos, la contraseña se elimina.</p>
                     
                     <div class="copy-all-container">
                         <button type="button" class="btn btn-sm btn-primary" onclick="copyAllToClipboard()">
-                            📋 Copiar todo
+                            📋 Copiar todo (email + enlace)
+                        </button>
+                        <button type="button" class="btn btn-sm btn-outline" onclick="copyAllWithPasswords()">
+                            📋 Con contraseñas
                         </button>
                     </div>
                     
@@ -189,18 +202,30 @@ try {
                         <thead>
                             <tr>
                                 <th>Correo</th>
+                                <th>Enlace seguro</th>
                                 <th>Contraseña</th>
                                 <th></th>
                             </tr>
                         </thead>
                         <tbody>
                             <?php foreach ($createdEmails as $created): ?>
-                                <tr>
+                                <tr data-email="<?= e($created['email']) ?>" 
+                                    data-password="<?= e($created['password']) ?>" 
+                                    data-link="<?= e($created['link'] ?? '') ?>">
                                     <td><code><?= e($created['email']) ?></code></td>
+                                    <td>
+                                        <?php if ($created['link']): ?>
+                                            <a href="<?= e($created['link']) ?>" target="_blank" class="share-link">
+                                                🔗 Abrir enlace
+                                            </a>
+                                        <?php else: ?>
+                                            <span class="text-muted">No disponible</span>
+                                        <?php endif; ?>
+                                    </td>
                                     <td><code class="password-text"><?= e($created['password']) ?></code></td>
                                     <td>
                                         <button type="button" class="btn btn-sm btn-outline" 
-                                                onclick="copyToClipboard('<?= e($created['email']) ?>', '<?= e($created['password']) ?>')">
+                                                onclick="copyRow(this.closest('tr'))">
                                             Copiar
                                         </button>
                                     </td>
@@ -310,8 +335,10 @@ try {
     </main>
     
     <script>
-        function copyToClipboard(email, password) {
-            const text = email + '\t' + password;
+        function copyRow(row) {
+            const email = row.dataset.email;
+            const link = row.dataset.link;
+            const text = email + '\t' + (link || 'Sin enlace');
             navigator.clipboard.writeText(text).then(() => {
                 alert('Copiado: ' + email);
             });
@@ -323,13 +350,30 @@ try {
             let text = '';
             
             rows.forEach(row => {
-                const email = row.querySelector('td:first-child code').textContent;
-                const password = row.querySelector('.password-text').textContent;
-                text += email + '\t' + password + '\n';
+                const email = row.dataset.email;
+                const link = row.dataset.link;
+                text += email + '\t' + (link || 'Sin enlace') + '\n';
             });
             
             navigator.clipboard.writeText(text.trim()).then(() => {
-                alert('¡Copiados ' + rows.length + ' correos al portapapeles!\n\nFormato: email[TAB]contraseña');
+                alert('¡Copiados ' + rows.length + ' correos!\n\nFormato: email[TAB]enlace\n\nComparte directamente con tus compañeros.');
+            });
+        }
+        
+        function copyAllWithPasswords() {
+            const table = document.getElementById('passwords-table');
+            const rows = table.querySelectorAll('tbody tr');
+            let text = '';
+            
+            rows.forEach(row => {
+                const email = row.dataset.email;
+                const password = row.dataset.password;
+                const link = row.dataset.link;
+                text += email + '\t' + password + '\t' + (link || '') + '\n';
+            });
+            
+            navigator.clipboard.writeText(text.trim()).then(() => {
+                alert('¡Copiados ' + rows.length + ' correos con contraseñas!\n\nFormato: email[TAB]contraseña[TAB]enlace');
             });
         }
     </script>

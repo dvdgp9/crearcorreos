@@ -1,0 +1,131 @@
+/* styles.css */
+body {
+    font-family: 'Montserrat', sans-serif;
+    background-color: #f4f4f9;
+    margin: 0;
+    padding: 0;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    height: 100vh;
+}
+
+.container {
+    background-color: #ffffff;
+    padding: 2rem;
+    border-radius: 10px;
+    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+    text-align: center;
+    max-width: 600px;
+    width: 100%;
+}
+
+.logo {
+    max-width: 300px;
+    margin-bottom: 1rem;
+}
+
+h1 {
+    font-size: 1.5rem;
+    color: #333333;
+    margin-bottom: 1.5rem;
+}
+
+form {
+    display: flex;
+    flex-direction: column;
+}
+
+label {
+    font-size: 1rem;
+    color: #555555;
+    margin-bottom: 0.5rem;
+}
+
+/* Apply the same style to both text and email inputs */
+input[type="text"],
+input[type="email"] {
+    padding: 0.75rem;
+    border: 1px solid #cccccc;
+    border-radius: 5px;
+    font-size: 1rem;
+    margin-bottom: 1rem;
+    width: 100%;            /* Make sure it fills the form's width */
+    box-sizing: border-box; /* Prevent width overflow from padding */
+}
+
+button {
+    padding: 0.75rem;
+    background-color: #23AAC5;
+    color: #ffffff;
+    border: none;
+    border-radius: 5px;
+    font-size: 1rem;
+    cursor: pointer;
+    transition: background-color 0.3s ease;
+}
+
+/* Add some hover styling */
+button:hover {
+    background-color: #0056b3;
+}
+
+.link, .message {
+    word-wrap: break-word;
+    font-size: 1rem;
+    color: #333333;
+    margin-bottom: 1.5rem;
+    display: block;
+    padding: 0.75rem;
+    border: 1px solid #cccccc;
+    border-radius: 5px;
+    background-color: #f9f9f9;
+}
+
+.copy-button {
+    padding: 0.75rem 1.5rem;
+    background-color: #23AAC5;
+    color: #ffffff;
+    border: none;
+    border-radius: 5px;
+    font-size: 1rem;
+    cursor: pointer;
+    transition: background-color 0.3s ease;
+}
+
+.copy-button:hover {
+    background-color: #0056b3;
+}
+
+.footer {
+    margin-top: 1.5rem;
+    font-size: 0.875rem;
+    color: #777777;
+}
+
+.success-message {
+    color: #28a745;
+    font-size: 1rem;
+    margin-top: 1rem;
+}
+
+.texto-intro {
+    font-size: 12px;
+    margin: 20px 30px;
+}
+
+/* Estilos botón confirmación */
+.confirm-button {
+    padding: 0.75rem 1.5rem;
+    background-color: #23AAC5;
+    color: #ffffff;
+    border: none;
+    border-radius: 5px;
+    font-size: 1rem;
+    cursor: pointer;
+    transition: background-color 0.3s ease;
+}
+
+.confirm-button:hover {
+    background-color: #0056b3;
+}

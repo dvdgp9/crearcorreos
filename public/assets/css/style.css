@@ -360,11 +360,37 @@ small.text-muted {
     letter-spacing: 0.5px;
 }
 
-.copy-all-container {
-    margin-bottom: 1rem;
-}
-
 /* Code styling */
 code {
     font-family: 'SF Mono', Monaco, 'Courier New', monospace;
+}
+
+/* Share links */
+.share-link {
+    color: var(--primary);
+    text-decoration: none;
+    font-weight: 500;
+}
+
+.share-link:hover {
+    text-decoration: underline;
+}
+
+.copy-all-container {
+    display: flex;
+    gap: 0.5rem;
+    margin-bottom: 1rem;
+}
+
+/* Table responsive */
+.table-passwords td {
+    vertical-align: middle;
+}
+
+.table-passwords td:nth-child(2) {
+    min-width: 120px;
+}
+
+.table-passwords td:nth-child(3) {
+    font-size: 0.8rem;
 }
