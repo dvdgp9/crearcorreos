@@ -1,0 +1,19 @@
+# Configuración con credenciales
+config/config.php
+
+# IDE
+.cursor/
+.idea/
+.vscode/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+logs/
+
+# Dependencias (si se usan en el futuro)
+vendor/
+node_modules/
