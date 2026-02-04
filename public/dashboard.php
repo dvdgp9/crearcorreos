@@ -168,6 +168,7 @@ try {
             <h1><?= e(APP_NAME) ?></h1>
             <nav>
                 <span class="user-info"><?= e(Auth::getUserEmail()) ?></span>
+                <a href="admin/users.php" class="btn btn-sm btn-outline">⚙️ Admin</a>
                 <a href="logout.php" class="btn btn-sm btn-outline">Cerrar sesión</a>
             </nav>
         </div>

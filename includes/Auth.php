@@ -81,4 +81,150 @@ class Auth {
     public static function getUserEmail(): ?string {
         return $_SESSION['user_email'] ?? null;
     }
+    
+    // ============================================
+    // MÉTODOS DE GESTIÓN DE USUARIOS (ADMIN)
+    // ============================================
+    
+    /**
+     * Obtener todos los usuarios
+     */
+    public static function getAllUsers(): array {
+        $db = Database::getConnection();
+        $stmt = $db->query("SELECT id, email, created_at, last_login, is_active FROM users ORDER BY created_at DESC");
+        return $stmt->fetchAll();
+    }
+    
+    /**
+     * Obtener usuario por ID
+     */
+    public static function getUserById(int $id): ?array {
+        $db = Database::getConnection();
+        $stmt = $db->prepare("SELECT id, email, created_at, last_login, is_active FROM users WHERE id = ?");
+        $stmt->execute([$id]);
+        $user = $stmt->fetch();
+        return $user ?: null;
+    }
+    
+    /**
+     * Crear nuevo usuario
+     */
+    public static function createUser(string $email, string $password): array {
+        // Validar email
+        if (!filter_var($email, FILTER_VALIDATE_EMAIL)) {
+            return ['success' => false, 'error' => 'Email no válido'];
+        }
+        
+        // Validar contraseña
+        if (strlen($password) < 8) {
+            return ['success' => false, 'error' => 'La contraseña debe tener al menos 8 caracteres'];
+        }
+        
+        $db = Database::getConnection();
+        
+        // Verificar si email ya existe
+        $stmt = $db->prepare("SELECT id FROM users WHERE email = ?");
+        $stmt->execute([$email]);
+        if ($stmt->fetch()) {
+            return ['success' => false, 'error' => 'El email ya está registrado'];
+        }
+        
+        // Crear usuario
+        $hash = password_hash($password, PASSWORD_BCRYPT);
+        $stmt = $db->prepare("INSERT INTO users (email, password_hash) VALUES (?, ?)");
+        
+        try {
+            $stmt->execute([$email, $hash]);
+            return ['success' => true, 'id' => $db->lastInsertId()];
+        } catch (PDOException $e) {
+            return ['success' => false, 'error' => 'Error al crear usuario: ' . $e->getMessage()];
+        }
+    }
+    
+    /**
+     * Actualizar email de usuario
+     */
+    public static function updateUser(int $id, string $email): array {
+        if (!filter_var($email, FILTER_VALIDATE_EMAIL)) {
+            return ['success' => false, 'error' => 'Email no válido'];
+        }
+        
+        $db = Database::getConnection();
+        
+        // Verificar si email ya existe en otro usuario
+        $stmt = $db->prepare("SELECT id FROM users WHERE email = ? AND id != ?");
+        $stmt->execute([$email, $id]);
+        if ($stmt->fetch()) {
+            return ['success' => false, 'error' => 'El email ya está en uso por otro usuario'];
+        }
+        
+        $stmt = $db->prepare("UPDATE users SET email = ? WHERE id = ?");
+        try {
+            $stmt->execute([$email, $id]);
+            return ['success' => true];
+        } catch (PDOException $e) {
+            return ['success' => false, 'error' => 'Error al actualizar: ' . $e->getMessage()];
+        }
+    }
+    
+    /**
+     * Cambiar contraseña de usuario
+     */
+    public static function updatePassword(int $id, string $password): array {
+        if (strlen($password) < 8) {
+            return ['success' => false, 'error' => 'La contraseña debe tener al menos 8 caracteres'];
+        }
+        
+        $db = Database::getConnection();
+        $hash = password_hash($password, PASSWORD_BCRYPT);
+        $stmt = $db->prepare("UPDATE users SET password_hash = ? WHERE id = ?");
+        
+        try {
+            $stmt->execute([$hash, $id]);
+            return ['success' => true];
+        } catch (PDOException $e) {
+            return ['success' => false, 'error' => 'Error al cambiar contraseña: ' . $e->getMessage()];
+        }
+    }
+    
+    /**
+     * Activar/Desactivar usuario
+     */
+    public static function toggleUserStatus(int $id): array {
+        $db = Database::getConnection();
+        
+        // No permitir desactivarse a sí mismo
+        if ($id === self::getUserId()) {
+            return ['success' => false, 'error' => 'No puedes desactivar tu propio usuario'];
+        }
+        
+        $stmt = $db->prepare("UPDATE users SET is_active = NOT is_active WHERE id = ?");
+        try {
+            $stmt->execute([$id]);
+            return ['success' => true];
+        } catch (PDOException $e) {
+            return ['success' => false, 'error' => 'Error al cambiar estado: ' . $e->getMessage()];
+        }
+    }
+    
+    /**
+     * Eliminar usuario permanentemente
+     */
+    public static function deleteUser(int $id): array {
+        $db = Database::getConnection();
+        
+        // No permitir eliminarse a sí mismo
+        if ($id === self::getUserId()) {
+            return ['success' => false, 'error' => 'No puedes eliminar tu propio usuario'];
+        }
+        
+        $stmt = $db->prepare("DELETE FROM users WHERE id = ?");
+        try {
+            $stmt->execute([$id]);
+            return ['success' => true];
+        } catch (PDOException $e) {
+            return ['success' => false, 'error' => 'Error al eliminar: ' . $e->getMessage()];
+        }
+    }
 }
+
