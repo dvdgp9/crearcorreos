@@ -384,13 +384,13 @@ try {
                                 <label for="quota">Tamaño máximo buzón</label>
                                 <select name="quota" id="quota">
                                     <option value="">Por defecto del servidor</option>
-                                    <option value="100M" <?= (($_POST['quota'] ?? '') === '100M') ? 'selected' : '' ?>>100 MB</option>
-                                    <option value="250M" <?= (($_POST['quota'] ?? '') === '250M') ? 'selected' : '' ?>>250 MB</option>
-                                    <option value="500M" <?= (($_POST['quota'] ?? '') === '500M') ? 'selected' : '' ?>>500 MB</option>
-                                    <option value="1G" <?= (($_POST['quota'] ?? '') === '1G') ? 'selected' : '' ?>>1 GB</option>
-                                    <option value="2G" <?= (($_POST['quota'] ?? '') === '2G') ? 'selected' : '' ?>>2 GB</option>
-                                    <option value="5G" <?= (($_POST['quota'] ?? '') === '5G') ? 'selected' : '' ?>>5 GB</option>
-                                    <option value="-1" <?= (($_POST['quota'] ?? '') === '-1') ? 'selected' : '' ?>>Ilimitado</option>
+                                    <option value="100M" <?= (($_POST['quota'] ?? '2G') === '100M') ? 'selected' : '' ?>>100 MB</option>
+                                    <option value="250M" <?= (($_POST['quota'] ?? '2G') === '250M') ? 'selected' : '' ?>>250 MB</option>
+                                    <option value="500M" <?= (($_POST['quota'] ?? '2G') === '500M') ? 'selected' : '' ?>>500 MB</option>
+                                    <option value="1G" <?= (($_POST['quota'] ?? '2G') === '1G') ? 'selected' : '' ?>>1 GB</option>
+                                    <option value="2G" <?= (($_POST['quota'] ?? '2G') === '2G') ? 'selected' : '' ?>>2 GB</option>
+                                    <option value="5G" <?= (($_POST['quota'] ?? '2G') === '5G') ? 'selected' : '' ?>>5 GB</option>
+                                    <option value="-1" <?= (($_POST['quota'] ?? '2G') === '-1') ? 'selected' : '' ?>>Ilimitado</option>
                                 </select>
                             </div>
                             
@@ -398,11 +398,11 @@ try {
                                 <label for="outgoing_limit">Límite emails salientes/hora</label>
                                 <select name="outgoing_limit" id="outgoing_limit">
                                     <option value="">Por defecto del servidor</option>
-                                    <option value="50" <?= (($_POST['outgoing_limit'] ?? '') === '50') ? 'selected' : '' ?>>50/hora</option>
-                                    <option value="100" <?= (($_POST['outgoing_limit'] ?? '') === '100') ? 'selected' : '' ?>>100/hora</option>
-                                    <option value="200" <?= (($_POST['outgoing_limit'] ?? '') === '200') ? 'selected' : '' ?>>200/hora</option>
-                                    <option value="500" <?= (($_POST['outgoing_limit'] ?? '') === '500') ? 'selected' : '' ?>>500/hora</option>
-                                    <option value="-1" <?= (($_POST['outgoing_limit'] ?? '') === '-1') ? 'selected' : '' ?>>Ilimitado</option>
+                                    <option value="50" <?= (($_POST['outgoing_limit'] ?? '50') === '50') ? 'selected' : '' ?>>50/hora</option>
+                                    <option value="100" <?= (($_POST['outgoing_limit'] ?? '50') === '100') ? 'selected' : '' ?>>100/hora</option>
+                                    <option value="200" <?= (($_POST['outgoing_limit'] ?? '50') === '200') ? 'selected' : '' ?>>200/hora</option>
+                                    <option value="500" <?= (($_POST['outgoing_limit'] ?? '50') === '500') ? 'selected' : '' ?>>500/hora</option>
+                                    <option value="-1" <?= (($_POST['outgoing_limit'] ?? '50') === '-1') ? 'selected' : '' ?>>Ilimitado</option>
                                 </select>
                             </div>
                         </div>
