@@ -131,7 +131,7 @@ class PleskApi {
     }
     
     /**
-     * Listar cuentas de correo de un dominio
+     * Listar cuentas de correo de un dominio (respuesta raw)
      */
     public function listMailboxes(string $domain): array {
         $params = ['--list', $domain];
@@ -143,6 +143,31 @@ class PleskApi {
         }
         
         return $result['response'];
+    }
+    
+    /**
+     * Obtener array de correos existentes en un dominio
+     * @return string[] Lista de direcciones de email
+     */
+    public function getExistingMailboxes(string $domain): array {
+        $result = $this->listMailboxes($domain);
+        
+        $stdout = $result['stdout'] ?? '';
+        if (empty($stdout)) {
+            return [];
+        }
+        
+        // Parsear: una dirección por línea
+        $lines = preg_split('/[\r\n]+/', trim($stdout));
+        $emails = [];
+        foreach ($lines as $line) {
+            $line = trim($line);
+            if (!empty($line) && strpos($line, '@') !== false) {
+                $emails[] = strtolower($line);
+            }
+        }
+        
+        return $emails;
     }
     
     /**

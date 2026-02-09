@@ -13,6 +13,7 @@ $domains = [];
 $error = '';
 $success = '';
 $createdEmails = []; // Para almacenar correos recién creados con contraseñas y enlaces
+$validationResults = []; // Resultados de la validación previa
 
 // Función para generar contraseña segura
 function generateSecurePassword(int $length = 12): string {
@@ -49,6 +50,59 @@ if ($flash) {
         $success = $flash['message'];
     } else {
         $error = $flash['message'];
+    }
+}
+
+// Procesar validación de correos
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['action'] === 'validate') {
+    $usernames = trim($_POST['usernames'] ?? '');
+    $domain = trim($_POST['domain'] ?? '');
+    $quota = trim($_POST['quota'] ?? '');
+    $outgoingLimit = $_POST['outgoing_limit'] ?? '';
+    
+    if (empty($usernames) || empty($domain)) {
+        $error = 'Debes especificar al menos un usuario y un dominio';
+    } else {
+        $userList = preg_split('/[\n,]+/', $usernames);
+        $userList = array_map('trim', $userList);
+        $userList = array_filter($userList);
+        
+        if (empty($userList)) {
+            $error = 'No se encontraron usuarios válidos';
+        } else {
+            try {
+                $existingEmails = $plesk->getExistingMailboxes($domain);
+                
+                foreach ($userList as $username) {
+                    $emailAddress = strtolower($username . '@' . $domain);
+                    
+                    if (!preg_match('/^[a-zA-Z0-9._-]+$/', $username)) {
+                        $validationResults[] = [
+                            'username' => $username,
+                            'email' => $emailAddress,
+                            'status' => 'invalid',
+                            'message' => 'Caracteres no permitidos'
+                        ];
+                    } elseif (in_array($emailAddress, $existingEmails)) {
+                        $validationResults[] = [
+                            'username' => $username,
+                            'email' => $emailAddress,
+                            'status' => 'exists',
+                            'message' => 'Ya existe en Plesk'
+                        ];
+                    } else {
+                        $validationResults[] = [
+                            'username' => $username,
+                            'email' => $emailAddress,
+                            'status' => 'new',
+                            'message' => 'Disponible para crear'
+                        ];
+                    }
+                }
+            } catch (Exception $e) {
+                $error = 'Error al consultar correos existentes: ' . $e->getMessage();
+            }
+        }
     }
 }
 
@@ -184,6 +238,65 @@ try {
                 <div class="alert alert-success"><?= $success ?></div>
             <?php endif; ?>
             
+            <?php if (!empty($validationResults)): ?>
+                <?php
+                    $newCount = count(array_filter($validationResults, fn($r) => $r['status'] === 'new'));
+                    $existsCount = count(array_filter($validationResults, fn($r) => $r['status'] === 'exists'));
+                    $invalidCount = count(array_filter($validationResults, fn($r) => $r['status'] === 'invalid'));
+                    $validUsernames = array_map(fn($r) => $r['username'], array_filter($validationResults, fn($r) => $r['status'] === 'new'));
+                ?>
+                <div class="card card-highlight">
+                    <h2>🔍 Resultado de la validación</h2>
+                    <p class="text-muted">
+                        <strong><?= $newCount ?></strong> disponible(s) · 
+                        <strong style="color: var(--warning, #e67e22);"><?= $existsCount ?></strong> ya existe(n) · 
+                        <strong style="color: var(--error);"><?= $invalidCount ?></strong> inválido(s)
+                    </p>
+                    
+                    <table class="table">
+                        <thead>
+                            <tr>
+                                <th>Correo</th>
+                                <th>Estado</th>
+                                <th>Detalle</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <?php foreach ($validationResults as $vr): ?>
+                                <tr>
+                                    <td><code><?= e($vr['email']) ?></code></td>
+                                    <td>
+                                        <?php if ($vr['status'] === 'new'): ?>
+                                            <span class="badge badge-success">✅ Nuevo</span>
+                                        <?php elseif ($vr['status'] === 'exists'): ?>
+                                            <span class="badge" style="background: #ffeaa7; color: #856404;">⚠️ Ya existe</span>
+                                        <?php else: ?>
+                                            <span class="badge badge-error">❌ Inválido</span>
+                                        <?php endif; ?>
+                                    </td>
+                                    <td class="text-muted"><?= e($vr['message']) ?></td>
+                                </tr>
+                            <?php endforeach; ?>
+                        </tbody>
+                    </table>
+                    
+                    <?php if ($newCount > 0): ?>
+                        <form method="POST" action="" style="margin-top: 1rem;">
+                            <input type="hidden" name="action" value="create_bulk">
+                            <input type="hidden" name="usernames" value="<?= e(implode("\n", $validUsernames)) ?>">
+                            <input type="hidden" name="domain" value="<?= e($_POST['domain'] ?? '') ?>">
+                            <input type="hidden" name="quota" value="<?= e($_POST['quota'] ?? '') ?>">
+                            <input type="hidden" name="outgoing_limit" value="<?= e($_POST['outgoing_limit'] ?? '') ?>">
+                            <button type="submit" class="btn btn-primary">
+                                ✅ Crear <?= $newCount ?> correo(s) disponible(s)
+                            </button>
+                        </form>
+                    <?php else: ?>
+                        <p style="margin-top: 1rem;"><strong>No hay correos nuevos que crear.</strong></p>
+                    <?php endif; ?>
+                </div>
+            <?php endif; ?>
+            
             <?php if (!empty($createdEmails)): ?>
                 <!-- Listado de correos creados con contraseñas y enlaces -->
                 <div class="card card-highlight">
@@ -243,8 +356,8 @@ try {
                     <h2>Crear cuentas de correo</h2>
                     <p class="text-muted">Introduce uno o más usuarios (uno por línea o separados por coma)</p>
                     
-                    <form method="POST" action="">
-                        <input type="hidden" name="action" value="create_bulk">
+                    <form method="POST" action="" id="emailForm">
+                        <input type="hidden" name="action" id="formAction" value="validate">
                         
                         <div class="form-group">
                             <label for="usernames">Usuarios</label>
@@ -294,9 +407,14 @@ try {
                             </div>
                         </div>
                         
-                        <button type="submit" class="btn btn-primary btn-block">
-                            Crear cuenta(s) de correo
-                        </button>
+                        <div style="display: flex; gap: 0.75rem;">
+                            <button type="submit" class="btn btn-primary" style="flex: 1;" onclick="document.getElementById('formAction').value='validate'">
+                                🔍 Validar primero
+                            </button>
+                            <button type="submit" class="btn btn-outline" style="flex: 1;" onclick="document.getElementById('formAction').value='create_bulk'">
+                                ⚡ Crear directamente
+                            </button>
+                        </div>
                     </form>
                 </div>
                 
