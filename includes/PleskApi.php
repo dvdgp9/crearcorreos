@@ -134,15 +134,21 @@ class PleskApi {
      * Listar cuentas de correo de un dominio (respuesta raw)
      */
     public function listMailboxes(string $domain): array {
-        $params = ['--list', $domain];
+        $params = ['--list', '-json'];
         
         $result = $this->executeCliCommand('mail', $params);
         
         if ($result['http_code'] !== 200) {
             throw new Exception("Error al listar correos: " . json_encode($result['response']));
         }
-        
-        return $result['response'];
+
+        $response = $result['response'];
+
+        if (isset($response['code']) && $response['code'] !== 0) {
+            throw new Exception($response['stderr'] ?? 'Error desconocido al listar correos');
+        }
+
+        return $response;
     }
     
     /**
@@ -156,30 +162,70 @@ class PleskApi {
         if (empty($stdout)) {
             return [];
         }
-        
-        // Plesk puede devolver una dirección completa por línea o solo el nombre del buzón.
-        // Normalizamos ambos formatos a direcciones completas para que la validación funcione.
-        $lines = preg_split('/[\r\n]+/', trim($stdout));
-        $emails = [];
+
         $normalizedDomain = strtolower(trim($domain));
+        $emails = [];
 
-        foreach ($lines as $line) {
-            $line = trim($line);
-            if ($line === '') {
-                continue;
-            }
+        $decoded = json_decode($stdout, true);
+        if (is_array($decoded)) {
+            $this->extractMailboxEmailsFromJson($decoded, $normalizedDomain, $emails);
+        }
 
-            if (strpos($line, '@') !== false) {
-                $emails[] = strtolower($line);
-                continue;
-            }
+        if (empty($emails)) {
+            // Fallback para instalaciones que no devuelven JSON aunque se solicite.
+            $lines = preg_split('/[\r\n]+/', trim($stdout));
 
-            if (preg_match('/^[a-zA-Z0-9._-]+$/', $line)) {
-                $emails[] = strtolower($line . '@' . $normalizedDomain);
+            foreach ($lines as $line) {
+                $line = trim($line);
+                if ($line === '') {
+                    continue;
+                }
+
+                if (strpos($line, '@') !== false) {
+                    $email = strtolower($line);
+                    if (str_ends_with($email, '@' . $normalizedDomain)) {
+                        $emails[] = $email;
+                    }
+                    continue;
+                }
+
+                if (preg_match('/^[a-zA-Z0-9._-]+$/', $line)) {
+                    $emails[] = strtolower($line . '@' . $normalizedDomain);
+                }
             }
         }
-        
+
         return array_values(array_unique($emails));
+    }
+
+    /**
+     * Extraer direcciones de correo desde la salida JSON de Plesk.
+     *
+     * @param mixed $node
+     * @param string[] $emails
+     */
+    private function extractMailboxEmailsFromJson($node, string $domain, array &$emails): void {
+        if (!is_array($node)) {
+            return;
+        }
+
+        $mailFields = ['email', 'address', 'name', 'mail_name', 'mailname', 'username'];
+
+        foreach ($node as $key => $value) {
+            if (is_string($value) && in_array($key, $mailFields, true)) {
+                $candidate = strtolower(trim($value));
+
+                if (strpos($candidate, '@') === false && preg_match('/^[a-zA-Z0-9._-]+$/', $candidate)) {
+                    $candidate .= '@' . $domain;
+                }
+
+                if (str_ends_with($candidate, '@' . $domain)) {
+                    $emails[] = $candidate;
+                }
+            } elseif (is_array($value)) {
+                $this->extractMailboxEmailsFromJson($value, $domain, $emails);
+            }
+        }
     }
     
     /**
