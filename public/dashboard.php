@@ -39,6 +39,28 @@ function parseUsernames(string $usernames): array {
     return array_values(array_filter($userList));
 }
 
+function normalizeUsernameInput(string $value, string $selectedDomain): string {
+    $value = trim($value);
+    if ($value === '') {
+        return '';
+    }
+
+    if (strpos($value, '@') === false) {
+        return $value;
+    }
+
+    if (!filter_var($value, FILTER_VALIDATE_EMAIL)) {
+        return $value;
+    }
+
+    [$mailbox, $domain] = explode('@', strtolower($value), 2);
+    if ($selectedDomain !== '' && strtolower($selectedDomain) !== $domain) {
+        return $value;
+    }
+
+    return $mailbox;
+}
+
 /**
  * @return array<string, string>
  */
@@ -112,6 +134,10 @@ $validationResults = [];
 $managedMailboxes = [];
 $lastResetResult = null;
 $manageDomain = trim($_POST['manage_domain'] ?? '');
+$action = $_POST['action'] ?? '';
+$activeTab = in_array($action, ['load_mailboxes', 'reset_password', 'update_mailbox', 'delete_mailbox'], true) || $manageDomain !== ''
+    ? 'manage'
+    : 'create';
 
 try {
     $domains = $plesk->getDomains();
@@ -128,8 +154,6 @@ if ($flash) {
     }
 }
 
-$action = $_POST['action'] ?? '';
-
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && $action === 'validate') {
     $usernames = trim($_POST['usernames'] ?? '');
     $domain = trim($_POST['domain'] ?? '');
@@ -145,13 +169,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $action === 'validate') {
             try {
                 $existingEmails = $plesk->getExistingMailboxes($domain);
 
-                foreach ($userList as $username) {
+                foreach ($userList as $rawUsername) {
+                    $username = normalizeUsernameInput($rawUsername, $domain);
                     $emailAddress = strtolower($username . '@' . $domain);
 
                     if (!preg_match('/^[a-zA-Z0-9._-]+$/', $username)) {
                         $validationResults[] = [
-                            'username' => $username,
-                            'email' => $emailAddress,
+                            'username' => $rawUsername,
+                            'email' => strpos($rawUsername, '@') !== false ? strtolower($rawUsername) : $emailAddress,
                             'status' => 'invalid',
                             'message' => 'Caracteres no permitidos'
                         ];
@@ -203,9 +228,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $action === 'create_bulk') {
 
             $quotaValue = $quota !== '' ? $quota : null;
 
-            foreach ($userList as $username) {
+            foreach ($userList as $rawUsername) {
+                $username = normalizeUsernameInput($rawUsername, $domain);
+
                 if (!preg_match('/^[a-zA-Z0-9._-]+$/', $username)) {
-                    $errors[] = "Usuario inválido: {$username}";
+                    $errors[] = "Usuario inválido: {$rawUsername}";
                     $errorCount++;
                     continue;
                 }
@@ -410,6 +437,8 @@ $outgoingLimitOptions = getOutgoingLimitOptions();
                 <div class="alert alert-success"><?= $success ?></div>
             <?php endif; ?>
 
+            <div id="ajax-feedback"></div>
+
             <?php if (!empty($validationResults)): ?>
                 <?php
                     $newCount = count(array_filter($validationResults, fn($r) => $r['status'] === 'new'));
@@ -518,8 +547,9 @@ $outgoingLimitOptions = getOutgoingLimitOptions();
                 </div>
             <?php endif; ?>
 
+            <div id="reset-result-region">
             <?php if ($lastResetResult): ?>
-                <div class="card card-highlight management-highlight">
+                <div class="card card-highlight management-highlight" id="reset-result-card">
                     <h2>Nuevo acceso generado</h2>
                     <p class="text-muted">Usa este bloque para copiar rápidamente el enlace o la contraseña recién creada.</p>
 
@@ -559,8 +589,18 @@ $outgoingLimitOptions = getOutgoingLimitOptions();
                     </div>
                 </div>
             <?php endif; ?>
+            </div>
 
-            <section class="dashboard-section">
+            <div class="dashboard-tabs" role="tablist" aria-label="Secciones del dashboard">
+                <button type="button" class="dashboard-tab <?= $activeTab === 'create' ? 'is-active' : '' ?>" data-tab-trigger="create">
+                    Crear cuentas
+                </button>
+                <button type="button" class="dashboard-tab <?= $activeTab === 'manage' ? 'is-active' : '' ?>" data-tab-trigger="manage">
+                    Gestionar cuentas
+                </button>
+            </div>
+
+            <section class="dashboard-section tab-panel <?= $activeTab === 'create' ? 'is-active' : '' ?>" data-tab-panel="create">
                 <div class="section-heading">
                     <span class="section-kicker">Alta masiva</span>
                     <h2>Crear cuentas nuevas</h2>
@@ -627,7 +667,7 @@ $outgoingLimitOptions = getOutgoingLimitOptions();
                 </div>
             </section>
 
-            <section class="dashboard-section section-management">
+            <section class="dashboard-section section-management tab-panel <?= $activeTab === 'manage' ? 'is-active' : '' ?>" data-tab-panel="manage">
                 <div class="section-heading">
                     <span class="section-kicker section-kicker-management">Gestion</span>
                     <h2>Gestionar cuentas existentes</h2>
@@ -635,7 +675,7 @@ $outgoingLimitOptions = getOutgoingLimitOptions();
                 </div>
 
                 <div class="card card-management">
-                    <form method="POST" action="" class="manage-toolbar">
+                    <form method="POST" action="" class="manage-toolbar" id="manage-toolbar-form">
                         <input type="hidden" name="action" value="load_mailboxes">
 
                         <div class="form-group manage-domain-group">
@@ -653,6 +693,7 @@ $outgoingLimitOptions = getOutgoingLimitOptions();
                         <button type="submit" class="btn btn-primary">Cargar cuentas</button>
                     </form>
 
+                    <div id="manage-mailboxes-region">
                     <?php if ($manageDomain !== '' && empty($managedMailboxes) && $action === 'load_mailboxes'): ?>
                         <div class="empty-state">
                             <strong>No hay cuentas cargadas para este dominio.</strong>
@@ -663,8 +704,24 @@ $outgoingLimitOptions = getOutgoingLimitOptions();
                             <strong><?= count($managedMailboxes) ?></strong> cuenta(s) encontradas en <code>@<?= e($manageDomain) ?></code>
                         </div>
 
+                        <div class="list-toolbar">
+                            <div class="list-search">
+                                <label for="mailbox-search">Buscar correo</label>
+                                <input type="search" id="mailbox-search" placeholder="Filtrar por nombre o dominio" data-list-search="mailboxes-table">
+                            </div>
+                            <div class="list-page-size">
+                                <label for="mailbox-page-size">Mostrar</label>
+                                <select id="mailbox-page-size" data-page-size="mailboxes-table">
+                                    <option value="10">10</option>
+                                    <option value="25" selected>25</option>
+                                    <option value="50">50</option>
+                                    <option value="100">100</option>
+                                </select>
+                            </div>
+                        </div>
+
                         <div class="table-scroll">
-                            <table class="table">
+                            <table class="table" id="mailboxes-table">
                                 <thead>
                                     <tr>
                                         <th>Correo</th>
@@ -676,35 +733,25 @@ $outgoingLimitOptions = getOutgoingLimitOptions();
                                 <tbody>
                                     <?php foreach ($managedMailboxes as $mailbox): ?>
                                         <?php $rowId = getRowId($mailbox['email']); ?>
-                                        <tr>
+                                        <tr data-list-row="mailboxes-table" data-search="<?= e(strtolower($mailbox['email'] . ' ' . ($mailbox['quota'] ?? '') . ' ' . ($mailbox['outgoing_limit'] ?? ''))) ?>">
                                             <td><code><?= e($mailbox['email']) ?></code></td>
                                             <td><?= e(formatMailboxValue($mailbox['quota'])) ?></td>
                                             <td><?= e(formatMailboxValue($mailbox['outgoing_limit'])) ?></td>
                                             <td>
                                                 <div class="table-actions">
-                                                    <form method="POST" action="" onsubmit="return confirmReset('<?= e($mailbox['email']) ?>');">
-                                                        <input type="hidden" name="action" value="reset_password">
-                                                        <input type="hidden" name="manage_domain" value="<?= e($manageDomain) ?>">
-                                                        <input type="hidden" name="email" value="<?= e($mailbox['email']) ?>">
-                                                        <button type="submit" class="btn btn-sm btn-primary">Restablecer</button>
-                                                    </form>
+                                                    <button type="button" class="btn btn-sm btn-primary" data-ajax-action="reset_password" data-email="<?= e($mailbox['email']) ?>">Restablecer</button>
 
                                                     <button type="button" class="btn btn-sm btn-outline" onclick="toggleEditForm('<?= e($rowId) ?>')">
                                                         Editar
                                                     </button>
 
-                                                    <form method="POST" action="" onsubmit="return confirmDelete('<?= e($mailbox['email']) ?>');">
-                                                        <input type="hidden" name="action" value="delete_mailbox">
-                                                        <input type="hidden" name="manage_domain" value="<?= e($manageDomain) ?>">
-                                                        <input type="hidden" name="email" value="<?= e($mailbox['email']) ?>">
-                                                        <button type="submit" class="btn btn-sm btn-danger">Borrar</button>
-                                                    </form>
+                                                    <button type="button" class="btn btn-sm btn-danger" data-ajax-action="delete_mailbox" data-email="<?= e($mailbox['email']) ?>">Borrar</button>
                                                 </div>
                                             </td>
                                         </tr>
-                                        <tr id="<?= e($rowId) ?>" class="edit-row" hidden>
+                                        <tr id="<?= e($rowId) ?>" class="edit-row" hidden data-related-row="mailboxes-table">
                                             <td colspan="4">
-                                                <form method="POST" action="" class="inline-edit-form">
+                                                <form method="POST" action="" class="inline-edit-form" data-ajax-form="update_mailbox">
                                                     <input type="hidden" name="action" value="update_mailbox">
                                                     <input type="hidden" name="manage_domain" value="<?= e($manageDomain) ?>">
                                                     <input type="hidden" name="email" value="<?= e($mailbox['email']) ?>">
@@ -742,13 +789,18 @@ $outgoingLimitOptions = getOutgoingLimitOptions();
                                 </tbody>
                             </table>
                         </div>
+
+                        <div class="pagination-bar" data-pagination="mailboxes-table">
+                            <button type="button" class="btn btn-sm btn-outline" data-page-prev="mailboxes-table">Anterior</button>
+                            <span class="pagination-status" data-page-status="mailboxes-table">Pagina 1</span>
+                            <button type="button" class="btn btn-sm btn-outline" data-page-next="mailboxes-table">Siguiente</button>
+                        </div>
                     <?php elseif ($manageDomain !== '' && $action !== 'load_mailboxes'): ?>
                         <p class="text-muted">Selecciona un dominio y carga las cuentas para empezar a gestionarlas.</p>
                     <?php endif; ?>
+                    </div>
                 </div>
-            </section>
 
-            <section class="dashboard-section">
                 <div class="section-heading">
                     <span class="section-kicker">Auditoria</span>
                     <h2>Historial reciente</h2>
@@ -756,11 +808,27 @@ $outgoingLimitOptions = getOutgoingLimitOptions();
                 </div>
 
                 <div class="card">
+                    <div id="history-region">
                     <?php if (empty($recentEmails)): ?>
                         <p class="text-muted">No hay operaciones registradas todavía.</p>
                     <?php else: ?>
+                        <div class="list-toolbar">
+                            <div class="list-search">
+                                <label for="history-search">Buscar en historial</label>
+                                <input type="search" id="history-search" placeholder="Filtrar por correo o acción" data-list-search="history-table">
+                            </div>
+                            <div class="list-page-size">
+                                <label for="history-page-size">Mostrar</label>
+                                <select id="history-page-size" data-page-size="history-table">
+                                    <option value="10" selected>10</option>
+                                    <option value="25">25</option>
+                                    <option value="50">50</option>
+                                </select>
+                            </div>
+                        </div>
+
                         <div class="table-scroll">
-                            <table class="table">
+                            <table class="table" id="history-table">
                                 <thead>
                                     <tr>
                                         <th>Correo</th>
@@ -771,7 +839,7 @@ $outgoingLimitOptions = getOutgoingLimitOptions();
                                 </thead>
                                 <tbody>
                                     <?php foreach ($recentEmails as $log): ?>
-                                        <tr>
+                                        <tr data-list-row="history-table" data-search="<?= e(strtolower(($log['email_address'] ?? '') . ' ' . ($log['action_type'] ?? 'create') . ' ' . ($log['status'] ?? ''))) ?>">
                                             <td><?= e($log['email_address']) ?></td>
                                             <td>
                                                 <span class="badge <?= e(getActionBadgeClass($log['action_type'] ?? 'create')) ?>">
@@ -789,13 +857,67 @@ $outgoingLimitOptions = getOutgoingLimitOptions();
                                 </tbody>
                             </table>
                         </div>
+
+                        <div class="pagination-bar" data-pagination="history-table">
+                            <button type="button" class="btn btn-sm btn-outline" data-page-prev="history-table">Anterior</button>
+                            <span class="pagination-status" data-page-status="history-table">Pagina 1</span>
+                            <button type="button" class="btn btn-sm btn-outline" data-page-next="history-table">Siguiente</button>
+                        </div>
                     <?php endif; ?>
+                    </div>
                 </div>
             </section>
         </div>
     </main>
 
     <script>
+        const quotaOptions = <?= json_encode($quotaOptions, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) ?>;
+        const outgoingLimitOptions = <?= json_encode($outgoingLimitOptions, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) ?>;
+        const mailboxApiUrl = 'mailbox_api.php';
+        const tableStates = {};
+
+        function activateTab(tabName) {
+            document.querySelectorAll('[data-tab-trigger]').forEach(button => {
+                button.classList.toggle('is-active', button.dataset.tabTrigger === tabName);
+            });
+
+            document.querySelectorAll('[data-tab-panel]').forEach(panel => {
+                panel.classList.toggle('is-active', panel.dataset.tabPanel === tabName);
+            });
+        }
+
+        function escapeHtml(value) {
+            return String(value ?? '')
+                .replace(/&/g, '&amp;')
+                .replace(/</g, '&lt;')
+                .replace(/>/g, '&gt;')
+                .replace(/"/g, '&quot;')
+                .replace(/'/g, '&#039;');
+        }
+
+        function debounce(fn, wait) {
+            let timeoutId = null;
+            return (...args) => {
+                window.clearTimeout(timeoutId);
+                timeoutId = window.setTimeout(() => fn(...args), wait);
+            };
+        }
+
+        function showAjaxFeedback(type, message) {
+            const container = document.getElementById('ajax-feedback');
+            if (!container) {
+                return;
+            }
+
+            if (!message) {
+                container.innerHTML = '';
+                return;
+            }
+
+            const alertClass = type === 'error' ? 'alert-error' : 'alert-success';
+            container.innerHTML = '<div class="alert ' + alertClass + '">' + escapeHtml(message) + '</div>';
+        }
+
         function copyText(text, successMessage) {
             navigator.clipboard.writeText(text).then(() => {
                 alert(successMessage);
@@ -849,6 +971,485 @@ $outgoingLimitOptions = getOutgoingLimitOptions();
         function confirmReset(email) {
             return confirm('Se generará una nueva contraseña para ' + email + '. ¿Quieres continuar?');
         }
+
+        function getActionLabel(actionType) {
+            const labels = {
+                create: 'Creacion',
+                password_reset: 'Reset',
+                update: 'Edicion',
+                delete: 'Borrado'
+            };
+
+            return labels[actionType] || actionType;
+        }
+
+        function getActionBadgeClass(actionType) {
+            const classes = {
+                create: 'badge-info',
+                password_reset: 'badge-warning',
+                update: 'badge-outline',
+                delete: 'badge-error'
+            };
+
+            return classes[actionType] || 'badge-outline';
+        }
+
+        function renderOptionList(options, selectedValue, currentLabel) {
+            let html = '<option value="__keep__">Mantener actual (' + escapeHtml(currentLabel) + ')</option>';
+            Object.entries(options).forEach(([value, label]) => {
+                const selected = String(selectedValue) === String(value) ? ' selected' : '';
+                html += '<option value="' + escapeHtml(value) + '"' + selected + '>' + escapeHtml(label) + '</option>';
+            });
+            return html;
+        }
+
+        function renderResetResult(result) {
+            const region = document.getElementById('reset-result-region');
+            if (!region) {
+                return;
+            }
+
+            if (!result) {
+                region.innerHTML = '';
+                return;
+            }
+
+            const safeEmail = escapeHtml(result.email);
+            const safePassword = escapeHtml(result.password);
+            const safeLink = result.share_link ? escapeHtml(result.share_link) : '';
+
+            region.innerHTML = `
+                <div class="card card-highlight management-highlight" id="reset-result-card">
+                    <h2>Nuevo acceso generado</h2>
+                    <p class="text-muted">Usa este bloque para copiar rápidamente el enlace o la contraseña recién creada.</p>
+                    <div class="result-grid">
+                        <div>
+                            <span class="result-label">Correo</span>
+                            <code>${safeEmail}</code>
+                        </div>
+                        <div>
+                            <span class="result-label">Contraseña</span>
+                            <code>${safePassword}</code>
+                        </div>
+                        <div>
+                            <span class="result-label">Enlace seguro</span>
+                            ${result.share_link
+                                ? `<a href="${safeLink}" target="_blank" class="share-link" rel="noopener noreferrer">${safeLink}</a>`
+                                : '<span class="text-muted">No disponible</span>'}
+                        </div>
+                    </div>
+                    <div class="copy-all-container">
+                        ${result.share_link
+                            ? `<button type="button" class="btn btn-sm btn-primary" onclick="copyText(${JSON.stringify(result.email + '\t' + result.share_link)}, 'Correo y enlace copiados')">Copiar email + enlace</button>
+                               <button type="button" class="btn btn-sm btn-outline" onclick="copyText(${JSON.stringify(result.share_link)}, 'Enlace copiado')">Copiar solo enlace</button>`
+                            : ''}
+                        <button type="button" class="btn btn-sm btn-outline" onclick="copyText(${JSON.stringify(result.email + '\t' + result.password)}, 'Correo y contraseña copiados')">Copiar email + contraseña</button>
+                    </div>
+                </div>
+            `;
+        }
+
+        function renderMailboxes(mailboxes, domain) {
+            const region = document.getElementById('manage-mailboxes-region');
+            if (!region) {
+                return;
+            }
+
+            if (!Array.isArray(mailboxes) || mailboxes.length === 0) {
+                region.innerHTML = `
+                    <div class="empty-state">
+                        <strong>No hay cuentas cargadas para este dominio.</strong>
+                        <p class="text-muted">Si el dominio existe en Plesk pero no hay buzones, esta tabla aparecerá vacía.</p>
+                    </div>
+                `;
+                return;
+            }
+
+            const mailboxRows = mailboxes.map(mailbox => {
+                const rowId = 'mailbox-' + btoa(unescape(encodeURIComponent(mailbox.email))).replace(/[^a-zA-Z0-9]/g, '').slice(0, 16);
+                const quotaLabel = escapeHtml(mailbox.quota || 'No disponible');
+                const outgoingLabel = escapeHtml(mailbox.outgoing_limit || 'No disponible');
+                const searchText = escapeHtml((mailbox.email + ' ' + (mailbox.quota || '') + ' ' + (mailbox.outgoing_limit || '')).toLowerCase());
+
+                return `
+                    <tr data-list-row="mailboxes-table" data-search="${searchText}">
+                        <td><code>${escapeHtml(mailbox.email)}</code></td>
+                        <td>${quotaLabel}</td>
+                        <td>${outgoingLabel}</td>
+                        <td>
+                            <div class="table-actions">
+                                <button type="button" class="btn btn-sm btn-primary" data-ajax-action="reset_password" data-email="${escapeHtml(mailbox.email)}">Restablecer</button>
+                                <button type="button" class="btn btn-sm btn-outline" onclick="toggleEditForm('${escapeHtml(rowId)}')">Editar</button>
+                                <button type="button" class="btn btn-sm btn-danger" data-ajax-action="delete_mailbox" data-email="${escapeHtml(mailbox.email)}">Borrar</button>
+                            </div>
+                        </td>
+                    </tr>
+                    <tr id="${escapeHtml(rowId)}" class="edit-row" hidden data-related-row="mailboxes-table">
+                        <td colspan="4">
+                            <form class="inline-edit-form" data-ajax-form="update_mailbox">
+                                <input type="hidden" name="action" value="update_mailbox">
+                                <input type="hidden" name="manage_domain" value="${escapeHtml(domain)}">
+                                <input type="hidden" name="email" value="${escapeHtml(mailbox.email)}">
+                                <div class="form-row">
+                                    <div class="form-group">
+                                        <label>Cuota del buzón</label>
+                                        <select name="edit_quota">
+                                            ${renderOptionList(quotaOptions, '', mailbox.quota || 'sin dato')}
+                                        </select>
+                                    </div>
+                                    <div class="form-group">
+                                        <label>Límite de salida</label>
+                                        <select name="edit_outgoing_limit">
+                                            ${renderOptionList(outgoingLimitOptions, '', mailbox.outgoing_limit || 'sin dato')}
+                                        </select>
+                                    </div>
+                                </div>
+                                <div class="action-row">
+                                    <button type="submit" class="btn btn-primary">Guardar cambios</button>
+                                    <button type="button" class="btn btn-outline" onclick="toggleEditForm('${escapeHtml(rowId)}')">Cancelar</button>
+                                </div>
+                            </form>
+                        </td>
+                    </tr>
+                `;
+            }).join('');
+
+            region.innerHTML = `
+                <div class="management-summary">
+                    <strong>${mailboxes.length}</strong> cuenta(s) encontradas en <code>@${escapeHtml(domain)}</code>
+                </div>
+                <div class="list-toolbar">
+                    <div class="list-search">
+                        <label for="mailbox-search">Buscar correo</label>
+                        <input type="search" id="mailbox-search" placeholder="Filtrar por nombre o dominio" data-list-search="mailboxes-table">
+                    </div>
+                    <div class="list-page-size">
+                        <label for="mailbox-page-size">Mostrar</label>
+                        <select id="mailbox-page-size" data-page-size="mailboxes-table">
+                            <option value="10">10</option>
+                            <option value="25" selected>25</option>
+                            <option value="50">50</option>
+                            <option value="100">100</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="table-scroll">
+                    <table class="table" id="mailboxes-table">
+                        <thead>
+                            <tr>
+                                <th>Correo</th>
+                                <th>Cuota</th>
+                                <th>Salida/hora</th>
+                                <th>Acciones</th>
+                            </tr>
+                        </thead>
+                        <tbody>${mailboxRows}</tbody>
+                    </table>
+                </div>
+                <div class="pagination-bar" data-pagination="mailboxes-table">
+                    <button type="button" class="btn btn-sm btn-outline" data-page-prev="mailboxes-table">Anterior</button>
+                    <span class="pagination-status" data-page-status="mailboxes-table">Pagina 1</span>
+                    <button type="button" class="btn btn-sm btn-outline" data-page-next="mailboxes-table">Siguiente</button>
+                </div>
+            `;
+
+            initPaginatedList('mailboxes-table', 250);
+        }
+
+        function renderHistory(logs) {
+            const region = document.getElementById('history-region');
+            if (!region) {
+                return;
+            }
+
+            if (!Array.isArray(logs) || logs.length === 0) {
+                region.innerHTML = '<p class="text-muted">No hay operaciones registradas todavía.</p>';
+                return;
+            }
+
+            const rows = logs.map(log => `
+                <tr data-list-row="history-table" data-search="${escapeHtml(((log.email_address || '') + ' ' + (log.action_type || 'create') + ' ' + (log.status || '')).toLowerCase())}">
+                    <td>${escapeHtml(log.email_address)}</td>
+                    <td><span class="badge ${escapeHtml(getActionBadgeClass(log.action_type || 'create'))}">${escapeHtml(getActionLabel(log.action_type || 'create'))}</span></td>
+                    <td><span class="badge badge-${log.status === 'success' ? 'success' : 'error'}">${log.status === 'success' ? 'OK' : 'Error'}</span></td>
+                    <td>${escapeHtml(log.created_at_label || '')}</td>
+                </tr>
+            `).join('');
+
+            region.innerHTML = `
+                <div class="list-toolbar">
+                    <div class="list-search">
+                        <label for="history-search">Buscar en historial</label>
+                        <input type="search" id="history-search" placeholder="Filtrar por correo o acción" data-list-search="history-table">
+                    </div>
+                    <div class="list-page-size">
+                        <label for="history-page-size">Mostrar</label>
+                        <select id="history-page-size" data-page-size="history-table">
+                            <option value="10" selected>10</option>
+                            <option value="25">25</option>
+                            <option value="50">50</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="table-scroll">
+                    <table class="table" id="history-table">
+                        <thead>
+                            <tr>
+                                <th>Correo</th>
+                                <th>Acción</th>
+                                <th>Estado</th>
+                                <th>Fecha</th>
+                            </tr>
+                        </thead>
+                        <tbody>${rows}</tbody>
+                    </table>
+                </div>
+                <div class="pagination-bar" data-pagination="history-table">
+                    <button type="button" class="btn btn-sm btn-outline" data-page-prev="history-table">Anterior</button>
+                    <span class="pagination-status" data-page-status="history-table">Pagina 1</span>
+                    <button type="button" class="btn btn-sm btn-outline" data-page-next="history-table">Siguiente</button>
+                </div>
+            `;
+
+            initPaginatedList('history-table', 250);
+        }
+
+        function initPaginatedList(tableId, debounceMs = 0) {
+            const table = document.getElementById(tableId);
+            if (!table) {
+                return;
+            }
+
+            const rows = Array.from(table.querySelectorAll('tbody tr[data-list-row="' + tableId + '"]'));
+            const searchInput = document.querySelector('[data-list-search="' + tableId + '"]');
+            const pageSizeSelect = document.querySelector('[data-page-size="' + tableId + '"]');
+            const prevButton = document.querySelector('[data-page-prev="' + tableId + '"]');
+            const nextButton = document.querySelector('[data-page-next="' + tableId + '"]');
+            const status = document.querySelector('[data-page-status="' + tableId + '"]');
+            let currentPage = 1;
+
+            const updateList = () => {
+                const query = searchInput ? searchInput.value.trim().toLowerCase() : '';
+                const pageSize = pageSizeSelect ? parseInt(pageSizeSelect.value, 10) : 25;
+                const filteredRows = rows.filter(row => {
+                    const haystack = (row.dataset.search || '').toLowerCase();
+                    return query === '' || haystack.indexOf(query) !== -1;
+                });
+                const filteredSet = new Set(filteredRows);
+                const totalPages = Math.max(1, Math.ceil(filteredRows.length / pageSize));
+                if (currentPage > totalPages) {
+                    currentPage = totalPages;
+                }
+
+                const start = (currentPage - 1) * pageSize;
+                const visibleSet = new Set(filteredRows.slice(start, start + pageSize));
+
+                rows.forEach(row => {
+                    const isVisible = visibleSet.has(row);
+                    row.hidden = !isVisible;
+
+                    const relatedRow = row.nextElementSibling;
+                    if ((!isVisible || !filteredSet.has(row)) && relatedRow && relatedRow.classList.contains('edit-row')) {
+                        relatedRow.hidden = true;
+                    }
+                });
+
+                if (status) {
+                    status.textContent = filteredRows.length === 0
+                        ? 'Sin resultados'
+                        : 'Pagina ' + currentPage + ' de ' + totalPages + ' · ' + filteredRows.length + ' resultado(s)';
+                }
+
+                if (prevButton) {
+                    prevButton.disabled = currentPage <= 1 || filteredRows.length === 0;
+                }
+
+                if (nextButton) {
+                    nextButton.disabled = currentPage >= totalPages || filteredRows.length === 0;
+                }
+            };
+
+            const debouncedUpdate = debounceMs > 0 ? debounce(updateList, debounceMs) : updateList;
+
+            if (searchInput && !searchInput.dataset.bound) {
+                searchInput.dataset.bound = 'true';
+                searchInput.addEventListener('input', () => {
+                    currentPage = 1;
+                    debouncedUpdate();
+                });
+            }
+
+            if (pageSizeSelect && !pageSizeSelect.dataset.bound) {
+                pageSizeSelect.dataset.bound = 'true';
+                pageSizeSelect.addEventListener('change', () => {
+                    currentPage = 1;
+                    updateList();
+                });
+            }
+
+            if (prevButton && !prevButton.dataset.bound) {
+                prevButton.dataset.bound = 'true';
+                prevButton.addEventListener('click', () => {
+                    if (currentPage > 1) {
+                        currentPage -= 1;
+                        updateList();
+                    }
+                });
+            }
+
+            if (nextButton && !nextButton.dataset.bound) {
+                nextButton.dataset.bound = 'true';
+                nextButton.addEventListener('click', () => {
+                    const query = searchInput ? searchInput.value.trim().toLowerCase() : '';
+                    const filteredCount = rows.filter(row => query === '' || (row.dataset.search || '').toLowerCase().indexOf(query) !== -1).length;
+                    const pageSize = pageSizeSelect ? parseInt(pageSizeSelect.value, 10) : 25;
+                    const totalPages = Math.max(1, Math.ceil(filteredCount / pageSize));
+                    if (currentPage < totalPages) {
+                        currentPage += 1;
+                        updateList();
+                    }
+                });
+            }
+
+            tableStates[tableId] = { updateList };
+            updateList();
+        }
+
+        function tryAutoSelectDomain() {
+            const usernamesField = document.getElementById('usernames');
+            const domainSelect = document.getElementById('domain');
+
+            if (!usernamesField || !domainSelect) {
+                return;
+            }
+
+            const matches = usernamesField.value.match(/[A-Z0-9._%+-]+@([A-Z0-9.-]+\.[A-Z]{2,})/ig);
+            if (!matches || matches.length === 0) {
+                return;
+            }
+
+            const domains = {};
+            matches.forEach(email => {
+                const parts = email.toLowerCase().split('@');
+                if (parts[1]) {
+                    domains[parts[1]] = (domains[parts[1]] || 0) + 1;
+                }
+            });
+
+            const sortedDomains = Object.keys(domains).sort((a, b) => domains[b] - domains[a]);
+            if (sortedDomains.length === 0) {
+                return;
+            }
+
+            const matchingOption = Array.from(domainSelect.options).find(option => option.value.toLowerCase() === sortedDomains[0]);
+            if (matchingOption) {
+                domainSelect.value = matchingOption.value;
+            }
+        }
+
+        async function postMailboxAction(formData) {
+            const response = await fetch(mailboxApiUrl, {
+                method: 'POST',
+                headers: {
+                    'X-Requested-With': 'XMLHttpRequest'
+                },
+                body: formData
+            });
+
+            const payload = await response.json();
+            if (!response.ok || !payload.success) {
+                throw new Error(payload.message || 'No se pudo completar la operación');
+            }
+
+            return payload;
+        }
+
+        async function handleManageAction(formData) {
+            const payload = await postMailboxAction(formData);
+            showAjaxFeedback('success', payload.message || '');
+            renderResetResult(payload.reset_result || null);
+            renderMailboxes(payload.mailboxes || [], payload.manage_domain || formData.get('manage_domain') || '');
+            renderHistory(payload.recent_logs || []);
+            activateTab('manage');
+        }
+
+        const manageToolbarForm = document.getElementById('manage-toolbar-form');
+        if (manageToolbarForm) {
+            manageToolbarForm.addEventListener('submit', async event => {
+                event.preventDefault();
+                showAjaxFeedback('', '');
+
+                const formData = new FormData(manageToolbarForm);
+                try {
+                    await handleManageAction(formData);
+                } catch (error) {
+                    showAjaxFeedback('error', error.message);
+                }
+            });
+        }
+
+        const manageRegion = document.getElementById('manage-mailboxes-region');
+        if (manageRegion) {
+            manageRegion.addEventListener('click', async event => {
+                const actionButton = event.target.closest('[data-ajax-action]');
+                if (!actionButton) {
+                    return;
+                }
+
+                const action = actionButton.dataset.ajaxAction;
+                const email = actionButton.dataset.email || '';
+                const manageDomainField = document.getElementById('manage_domain');
+                const manageDomain = manageDomainField ? manageDomainField.value : '';
+
+                if (action === 'reset_password' && !confirmReset(email)) {
+                    return;
+                }
+
+                if (action === 'delete_mailbox' && !confirmDelete(email)) {
+                    return;
+                }
+
+                const formData = new FormData();
+                formData.append('action', action);
+                formData.append('manage_domain', manageDomain);
+                formData.append('email', email);
+
+                try {
+                    await handleManageAction(formData);
+                } catch (error) {
+                    showAjaxFeedback('error', error.message);
+                }
+            });
+
+            manageRegion.addEventListener('submit', async event => {
+                const form = event.target.closest('form[data-ajax-form="update_mailbox"]');
+                if (!form) {
+                    return;
+                }
+
+                event.preventDefault();
+
+                try {
+                    await handleManageAction(new FormData(form));
+                } catch (error) {
+                    showAjaxFeedback('error', error.message);
+                }
+            });
+        }
+
+        document.querySelectorAll('[data-tab-trigger]').forEach(button => {
+            button.addEventListener('click', () => activateTab(button.dataset.tabTrigger));
+        });
+
+        const usernamesField = document.getElementById('usernames');
+        if (usernamesField) {
+            usernamesField.addEventListener('input', tryAutoSelectDomain);
+            usernamesField.addEventListener('blur', tryAutoSelectDomain);
+            tryAutoSelectDomain();
+        }
+
+        initPaginatedList('mailboxes-table', 250);
+        initPaginatedList('history-table', 250);
     </script>
 </body>
 </html>
