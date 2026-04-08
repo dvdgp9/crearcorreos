@@ -125,7 +125,7 @@ try {
     }
 
     $mailboxes = $plesk->getMailboxesByDomain($manageDomain);
-    $recentLogs = EmailLog::getRecent(50);
+    $recentLogs = EmailLog::getRecentByActionTypes(['password_reset', 'update', 'delete'], 50);
 
     respondJson([
         'success' => true,

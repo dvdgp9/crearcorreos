@@ -189,6 +189,20 @@ class PleskApi {
             }
         }
 
+        foreach ($mailboxes as $email => $mailbox) {
+            if ($mailbox['quota'] !== null && $mailbox['outgoing_limit'] !== null) {
+                continue;
+            }
+
+            try {
+                $details = $this->getMailboxInfo($email);
+                $mailboxes[$email]['quota'] = $details['quota'] ?? $mailboxes[$email]['quota'];
+                $mailboxes[$email]['outgoing_limit'] = $details['outgoing_limit'] ?? $mailboxes[$email]['outgoing_limit'];
+            } catch (Exception $e) {
+                // Si falla el detalle individual, mantenemos la cuenta en el listado.
+            }
+        }
+
         ksort($mailboxes);
         return array_values($mailboxes);
     }
@@ -216,11 +230,15 @@ class PleskApi {
             'domain' => $domain,
             'quota' => $this->extractValueByPatterns($stdout, [
                 '/mailbox quota\s*:\s*(.+)/i',
-                '/quota\s*:\s*(.+)/i'
+                '/quota\s*:\s*(.+)/i',
+                '/mailbox_quota\s*[:=]\s*(.+)/i',
+                '/mbox_quota\s*[:=]\s*(.+)/i'
             ]),
             'outgoing_limit' => $this->extractValueByPatterns($stdout, [
                 '/outgoing(?:\s+messages)?(?:\s+mbox)?\s+limit\s*:\s*(.+)/i',
-                '/outgoing messages(?: per hour)?\s*:\s*(.+)/i'
+                '/outgoing messages(?: per hour)?\s*:\s*(.+)/i',
+                '/outgoing-messages-mbox-limit\s*[:=]\s*(.+)/i',
+                '/outgoing_messages_mbox_limit\s*[:=]\s*(.+)/i'
             ]),
             'raw_stdout' => $stdout
         ];

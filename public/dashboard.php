@@ -397,9 +397,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && in_array($action, ['load_mailboxes'
     }
 }
 
-$recentEmails = [];
+$recentCreatedEmails = [];
+$recentManageActions = [];
 try {
-    $recentEmails = EmailLog::getRecent(10);
+    $recentCreatedEmails = EmailLog::getRecentByActionTypes(['create'], 10);
+    $recentManageActions = EmailLog::getRecentByActionTypes(['password_reset', 'update', 'delete'], 10);
 } catch (Exception $e) {
     // Silenciar error de logs
 }
@@ -665,6 +667,43 @@ $outgoingLimitOptions = getOutgoingLimitOptions();
                         </div>
                     </form>
                 </div>
+
+                <div class="section-heading">
+                    <span class="section-kicker">Creados</span>
+                    <h2>Historial reciente de altas</h2>
+                    <p class="text-muted">Ultimas cuentas creadas desde esta aplicación.</p>
+                </div>
+
+                <div class="card">
+                    <?php if (empty($recentCreatedEmails)): ?>
+                        <p class="text-muted">No hay correos creados todavía.</p>
+                    <?php else: ?>
+                        <div class="table-scroll">
+                            <table class="table">
+                                <thead>
+                                    <tr>
+                                        <th>Correo</th>
+                                        <th>Estado</th>
+                                        <th>Fecha</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <?php foreach ($recentCreatedEmails as $log): ?>
+                                        <tr>
+                                            <td><?= e($log['email_address']) ?></td>
+                                            <td>
+                                                <span class="badge badge-<?= $log['status'] === 'success' ? 'success' : 'error' ?>">
+                                                    <?= $log['status'] === 'success' ? 'OK' : 'Error' ?>
+                                                </span>
+                                            </td>
+                                            <td><?= date('d/m H:i', strtotime($log['created_at'])) ?></td>
+                                        </tr>
+                                    <?php endforeach; ?>
+                                </tbody>
+                            </table>
+                        </div>
+                    <?php endif; ?>
+                </div>
             </section>
 
             <section class="dashboard-section section-management tab-panel <?= $activeTab === 'manage' ? 'is-active' : '' ?>" data-tab-panel="manage">
@@ -676,8 +715,6 @@ $outgoingLimitOptions = getOutgoingLimitOptions();
 
                 <div class="card card-management">
                     <form method="POST" action="" class="manage-toolbar" id="manage-toolbar-form">
-                        <input type="hidden" name="action" value="load_mailboxes">
-
                         <div class="form-group manage-domain-group">
                             <label for="manage_domain">Dominio a gestionar</label>
                             <select name="manage_domain" id="manage_domain" required>
@@ -689,8 +726,6 @@ $outgoingLimitOptions = getOutgoingLimitOptions();
                                 <?php endforeach; ?>
                             </select>
                         </div>
-
-                        <button type="submit" class="btn btn-primary">Cargar cuentas</button>
                     </form>
 
                     <div id="manage-mailboxes-region">
@@ -809,7 +844,7 @@ $outgoingLimitOptions = getOutgoingLimitOptions();
 
                 <div class="card">
                     <div id="history-region">
-                    <?php if (empty($recentEmails)): ?>
+                    <?php if (empty($recentManageActions)): ?>
                         <p class="text-muted">No hay operaciones registradas todavía.</p>
                     <?php else: ?>
                         <div class="list-toolbar">
@@ -838,7 +873,7 @@ $outgoingLimitOptions = getOutgoingLimitOptions();
                                     </tr>
                                 </thead>
                                 <tbody>
-                                    <?php foreach ($recentEmails as $log): ?>
+                                    <?php foreach ($recentManageActions as $log): ?>
                                         <tr data-list-row="history-table" data-search="<?= e(strtolower(($log['email_address'] ?? '') . ' ' . ($log['action_type'] ?? 'create') . ' ' . ($log['status'] ?? ''))) ?>">
                                             <td><?= e($log['email_address']) ?></td>
                                             <td>
@@ -1375,17 +1410,34 @@ $outgoingLimitOptions = getOutgoingLimitOptions();
 
         const manageToolbarForm = document.getElementById('manage-toolbar-form');
         if (manageToolbarForm) {
-            manageToolbarForm.addEventListener('submit', async event => {
-                event.preventDefault();
-                showAjaxFeedback('', '');
+            const loadSelectedDomain = async () => {
+                const formData = new FormData();
+                const manageDomainField = document.getElementById('manage_domain');
+                const manageDomain = manageDomainField ? manageDomainField.value : '';
+                if (!manageDomain) {
+                    return;
+                }
 
-                const formData = new FormData(manageToolbarForm);
+                showAjaxFeedback('', '');
+                formData.append('action', 'load_mailboxes');
+                formData.append('manage_domain', manageDomain);
+
                 try {
                     await handleManageAction(formData);
                 } catch (error) {
                     showAjaxFeedback('error', error.message);
                 }
+            };
+
+            manageToolbarForm.addEventListener('submit', async event => {
+                event.preventDefault();
+                await loadSelectedDomain();
             });
+
+            const manageDomainField = document.getElementById('manage_domain');
+            if (manageDomainField) {
+                manageDomainField.addEventListener('change', loadSelectedDomain);
+            }
         }
 
         const manageRegion = document.getElementById('manage-mailboxes-region');

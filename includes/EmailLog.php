@@ -35,21 +35,38 @@ class EmailLog {
     }
     
     public static function getRecent(int $limit = 20): array {
+        return self::getRecentByActionTypes([], $limit);
+    }
+
+    /**
+     * @param string[] $actionTypes
+     */
+    public static function getRecentByActionTypes(array $actionTypes, int $limit = 20): array {
         $db = Database::getConnection();
 
         $actionTypeSelect = self::hasActionTypeColumn($db)
             ? 'el.action_type'
             : "'create' AS action_type";
 
-        $stmt = $db->prepare("
+        $sql = "
             SELECT el.*, {$actionTypeSelect}, u.email as created_by_email
             FROM email_logs el
             JOIN users u ON el.created_by = u.id
-            ORDER BY el.created_at DESC
-            LIMIT ?
-        ");
-        
-        $stmt->execute([$limit]);
+        ";
+
+        $params = [];
+
+        if (!empty($actionTypes) && self::hasActionTypeColumn($db)) {
+            $placeholders = implode(', ', array_fill(0, count($actionTypes), '?'));
+            $sql .= " WHERE el.action_type IN ({$placeholders})";
+            $params = array_merge($params, $actionTypes);
+        }
+
+        $sql .= " ORDER BY el.created_at DESC LIMIT ?";
+        $params[] = $limit;
+
+        $stmt = $db->prepare($sql);
+        $stmt->execute($params);
         return $stmt->fetchAll();
     }
     
