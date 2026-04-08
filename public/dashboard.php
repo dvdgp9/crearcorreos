@@ -97,6 +97,45 @@ function formatMailboxValue(?string $value, string $fallback = 'No disponible'):
     return trim($value);
 }
 
+function formatQuotaDisplay(?string $value): string {
+    $value = formatMailboxValue($value);
+    if ($value === 'No disponible') {
+        return $value;
+    }
+
+    if ($value === '-1') {
+        return 'Ilimitado';
+    }
+
+    if (!ctype_digit($value)) {
+        return $value;
+    }
+
+    $bytes = (float) $value;
+    $units = ['B', 'KB', 'MB', 'GB', 'TB'];
+    $unitIndex = 0;
+
+    while ($bytes >= 1024 && $unitIndex < count($units) - 1) {
+        $bytes /= 1024;
+        $unitIndex++;
+    }
+
+    $formatted = $bytes >= 10 || $unitIndex === 0
+        ? number_format($bytes, 0)
+        : number_format($bytes, 1);
+
+    return rtrim(rtrim($formatted, '0'), '.') . ' ' . $units[$unitIndex];
+}
+
+function formatOutgoingLimitDisplay(?string $value): string {
+    $value = formatMailboxValue($value);
+    if ($value === 'No disponible') {
+        return $value;
+    }
+
+    return $value === '-1' ? 'Ilimitado' : $value;
+}
+
 function getActionLabel(string $actionType): string {
     $labels = [
         'create' => 'Creacion',
@@ -779,8 +818,8 @@ $outgoingLimitOptions = getOutgoingLimitOptions();
                                             data-search="<?= e(strtolower($mailbox['email'] . ' ' . ($mailbox['quota'] ?? '') . ' ' . ($mailbox['outgoing_limit'] ?? ''))) ?>"
                                         >
                                             <td><code><?= e($mailbox['email']) ?></code></td>
-                                            <td data-field="quota"><?= e(formatMailboxValue($mailbox['quota'])) ?></td>
-                                            <td data-field="outgoing_limit"><?= e(formatMailboxValue($mailbox['outgoing_limit'])) ?></td>
+                                            <td data-field="quota"><?= e(formatQuotaDisplay($mailbox['quota'])) ?></td>
+                                            <td data-field="outgoing_limit"><?= e(formatOutgoingLimitDisplay($mailbox['outgoing_limit'])) ?></td>
                                             <td>
                                                 <div class="table-actions">
                                                     <button type="button" class="btn btn-sm btn-primary" data-ajax-action="reset_password" data-email="<?= e($mailbox['email']) ?>">Restablecer</button>
@@ -809,7 +848,7 @@ $outgoingLimitOptions = getOutgoingLimitOptions();
                                                         <div class="form-group">
                                                             <label>Cuota del buzón</label>
                                                             <select name="edit_quota">
-                                                                <option value="__keep__">Mantener actual (<?= e(formatMailboxValue($mailbox['quota'], 'sin dato')) ?>)</option>
+                                                                <option value="__keep__">Mantener actual (<?= e(formatQuotaDisplay($mailbox['quota'])) ?>)</option>
                                                                 <?php foreach ($quotaOptions as $value => $label): ?>
                                                                     <option value="<?= e($value) ?>"><?= e($label) ?></option>
                                                                 <?php endforeach; ?>
@@ -819,7 +858,7 @@ $outgoingLimitOptions = getOutgoingLimitOptions();
                                                         <div class="form-group">
                                                             <label>Límite de salida</label>
                                                             <select name="edit_outgoing_limit">
-                                                                <option value="__keep__">Mantener actual (<?= e(formatMailboxValue($mailbox['outgoing_limit'], 'sin dato')) ?>)</option>
+                                                                <option value="__keep__">Mantener actual (<?= e(formatOutgoingLimitDisplay($mailbox['outgoing_limit'])) ?>)</option>
                                                                 <?php foreach ($outgoingLimitOptions as $value => $label): ?>
                                                                     <option value="<?= e($value) ?>"><?= e($label) ?></option>
                                                                 <?php endforeach; ?>
@@ -1006,6 +1045,71 @@ $outgoingLimitOptions = getOutgoingLimitOptions();
             copyText(text.trim(), 'Se han copiado ' + rows.length + ' registros.');
         }
 
+        function formatQuotaValue(value) {
+            if (value === null || value === undefined || value === '') {
+                return 'No disponible';
+            }
+
+            const normalized = String(value).trim();
+            if (normalized === '-1') {
+                return 'Ilimitado';
+            }
+
+            if (/^\d+$/.test(normalized)) {
+                const bytes = Number(normalized);
+                if (bytes <= 0) {
+                    return normalized;
+                }
+
+                const units = ['B', 'KB', 'MB', 'GB', 'TB'];
+                let unitIndex = 0;
+                let display = bytes;
+
+                while (display >= 1024 && unitIndex < units.length - 1) {
+                    display /= 1024;
+                    unitIndex += 1;
+                }
+
+                const decimals = display >= 10 || unitIndex === 0 ? 0 : 1;
+                return display.toFixed(decimals).replace(/\.0$/, '') + ' ' + units[unitIndex];
+            }
+
+            return normalized;
+        }
+
+        function formatOutgoingLimitValue(value) {
+            if (value === null || value === undefined || value === '') {
+                return 'No disponible';
+            }
+
+            const normalized = String(value).trim();
+            if (normalized === '-1') {
+                return 'Ilimitado';
+            }
+
+            return normalized;
+        }
+
+        function updateEditFormSummary(row, details) {
+            const editRow = row && row.nextElementSibling && row.nextElementSibling.classList.contains('edit-row')
+                ? row.nextElementSibling
+                : null;
+            if (!editRow) {
+                return;
+            }
+
+            const quotaSelect = editRow.querySelector('select[name="edit_quota"]');
+            const outgoingSelect = editRow.querySelector('select[name="edit_outgoing_limit"]');
+
+            if (quotaSelect && quotaSelect.options.length > 0) {
+                quotaSelect.options[0].textContent = 'Mantener actual (' + formatQuotaValue(details && details.quota ? details.quota : null) + ')';
+            }
+
+            if (outgoingSelect && outgoingSelect.options.length > 0) {
+                outgoingSelect.options[0].textContent = 'Mantener actual (' + formatOutgoingLimitValue(details && details.outgoing_limit ? details.outgoing_limit : null) + ')';
+            }
+        }
+
         function toggleEditForm(rowId) {
             const row = document.getElementById(rowId);
             if (!row) {
@@ -1013,6 +1117,10 @@ $outgoingLimitOptions = getOutgoingLimitOptions();
             }
 
             row.hidden = !row.hidden;
+
+            if (!row.hidden && row.previousElementSibling && row.previousElementSibling.dataset.email) {
+                loadMailboxDetailsForRow(row.previousElementSibling);
+            }
         }
 
         function confirmDelete(email) {
@@ -1118,8 +1226,8 @@ $outgoingLimitOptions = getOutgoingLimitOptions();
 
             const mailboxRows = mailboxes.map(mailbox => {
                 const rowId = 'mailbox-' + btoa(unescape(encodeURIComponent(mailbox.email))).replace(/[^a-zA-Z0-9]/g, '').slice(0, 16);
-                const quotaLabel = escapeHtml(mailbox.quota || 'No disponible');
-                const outgoingLabel = escapeHtml(mailbox.outgoing_limit || 'No disponible');
+                const quotaLabel = escapeHtml(formatQuotaValue(mailbox.quota));
+                const outgoingLabel = escapeHtml(formatOutgoingLimitValue(mailbox.outgoing_limit));
                 const searchText = escapeHtml((mailbox.email + ' ' + (mailbox.quota || '') + ' ' + (mailbox.outgoing_limit || '')).toLowerCase());
 
                 return `
@@ -1149,13 +1257,13 @@ $outgoingLimitOptions = getOutgoingLimitOptions();
                                     <div class="form-group">
                                         <label>Cuota del buzón</label>
                                         <select name="edit_quota">
-                                            ${renderOptionList(quotaOptions, '', mailbox.quota || 'sin dato')}
+                                            ${renderOptionList(quotaOptions, '', formatQuotaValue(mailbox.quota))}
                                         </select>
                                     </div>
                                     <div class="form-group">
                                         <label>Límite de salida</label>
                                         <select name="edit_outgoing_limit">
-                                            ${renderOptionList(outgoingLimitOptions, '', mailbox.outgoing_limit || 'sin dato')}
+                                            ${renderOptionList(outgoingLimitOptions, '', formatOutgoingLimitValue(mailbox.outgoing_limit))}
                                         </select>
                                     </div>
                                 </div>
@@ -1218,8 +1326,8 @@ $outgoingLimitOptions = getOutgoingLimitOptions();
 
             const quotaCell = row.querySelector('[data-field="quota"]');
             const outgoingCell = row.querySelector('[data-field="outgoing_limit"]');
-            const quotaValue = details && details.quota ? details.quota : 'No disponible';
-            const outgoingValue = details && details.outgoing_limit ? details.outgoing_limit : 'No disponible';
+            const quotaValue = formatQuotaValue(details && details.quota ? details.quota : null);
+            const outgoingValue = formatOutgoingLimitValue(details && details.outgoing_limit ? details.outgoing_limit : null);
 
             if (quotaCell) {
                 quotaCell.textContent = quotaValue;
@@ -1232,6 +1340,7 @@ $outgoingLimitOptions = getOutgoingLimitOptions();
             const email = row.dataset.email || '';
             row.dataset.search = (email + ' ' + quotaValue + ' ' + outgoingValue).toLowerCase();
             row.dataset.detailsState = 'loaded';
+            updateEditFormSummary(row, details);
         }
 
         async function loadMailboxDetailsForRow(row) {
