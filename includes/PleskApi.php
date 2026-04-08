@@ -157,17 +157,29 @@ class PleskApi {
             return [];
         }
         
-        // Parsear: una dirección por línea
+        // Plesk puede devolver una dirección completa por línea o solo el nombre del buzón.
+        // Normalizamos ambos formatos a direcciones completas para que la validación funcione.
         $lines = preg_split('/[\r\n]+/', trim($stdout));
         $emails = [];
+        $normalizedDomain = strtolower(trim($domain));
+
         foreach ($lines as $line) {
             $line = trim($line);
-            if (!empty($line) && strpos($line, '@') !== false) {
+            if ($line === '') {
+                continue;
+            }
+
+            if (strpos($line, '@') !== false) {
                 $emails[] = strtolower($line);
+                continue;
+            }
+
+            if (preg_match('/^[a-zA-Z0-9._-]+$/', $line)) {
+                $emails[] = strtolower($line . '@' . $normalizedDomain);
             }
         }
         
-        return $emails;
+        return array_values(array_unique($emails));
     }
     
     /**
