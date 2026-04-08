@@ -912,7 +912,7 @@ $outgoingLimitOptions = getOutgoingLimitOptions();
     <script>
         const quotaOptions = <?= json_encode($quotaOptions, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) ?>;
         const outgoingLimitOptions = <?= json_encode($outgoingLimitOptions, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) ?>;
-        const mailboxApiUrl = 'mailbox_api.php';
+        const mailboxApiUrl = new URL('mailbox_api.php', window.location.href).toString();
         const tableStates = {};
 
         function activateTab(tabName) {

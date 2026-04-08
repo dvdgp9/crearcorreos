@@ -7,6 +7,17 @@ require_once __DIR__ . '/../includes/init.php';
 
 Auth::requireLogin();
 
+$currentUserId = Auth::getUserId();
+if ($currentUserId === null) {
+    respondJson([
+        'success' => false,
+        'message' => 'Sesión no válida'
+    ], 401);
+}
+
+// Evita bloquear la sesión mientras se ejecutan llamadas largas a Plesk.
+session_write_close();
+
 header('Content-Type: application/json; charset=UTF-8');
 
 function respondJson(array $payload, int $statusCode = 200): void {
@@ -57,7 +68,7 @@ try {
         [, $domain] = explode('@', $email, 2);
 
         EmailLog::log(
-            Auth::getUserId(),
+            $currentUserId,
             $email,
             $domain,
             'success',
@@ -92,7 +103,7 @@ try {
         [, $domain] = explode('@', $email, 2);
 
         EmailLog::log(
-            Auth::getUserId(),
+            $currentUserId,
             $email,
             $domain,
             'success',
@@ -109,7 +120,7 @@ try {
         [, $domain] = explode('@', $email, 2);
 
         EmailLog::log(
-            Auth::getUserId(),
+            $currentUserId,
             $email,
             $domain,
             'success',
@@ -143,7 +154,7 @@ try {
 
         try {
             EmailLog::log(
-                Auth::getUserId(),
+                $currentUserId,
                 $emailForLog,
                 $logDomain,
                 'error',

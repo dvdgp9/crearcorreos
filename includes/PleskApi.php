@@ -189,20 +189,6 @@ class PleskApi {
             }
         }
 
-        foreach ($mailboxes as $email => $mailbox) {
-            if ($mailbox['quota'] !== null && $mailbox['outgoing_limit'] !== null) {
-                continue;
-            }
-
-            try {
-                $details = $this->getMailboxInfo($email);
-                $mailboxes[$email]['quota'] = $details['quota'] ?? $mailboxes[$email]['quota'];
-                $mailboxes[$email]['outgoing_limit'] = $details['outgoing_limit'] ?? $mailboxes[$email]['outgoing_limit'];
-            } catch (Exception $e) {
-                // Si falla el detalle individual, mantenemos la cuenta en el listado.
-            }
-        }
-
         ksort($mailboxes);
         return array_values($mailboxes);
     }
@@ -365,8 +351,8 @@ class PleskApi {
                     'email' => $email,
                     'mailbox' => strstr($email, '@', true),
                     'domain' => $domain,
-                    'quota' => $this->pickFirstStringValue($node, ['mbox_quota', 'mailbox_quota', 'quota']),
-                    'outgoing_limit' => $this->pickFirstScalarValue($node, [
+                    'quota' => $this->pickFirstStringValueDeep($node, ['mbox_quota', 'mailbox_quota', 'quota']),
+                    'outgoing_limit' => $this->pickFirstScalarValueDeep($node, [
                         'outgoing_messages_mbox_limit',
                         'outgoing-messages-mbox-limit',
                         'outgoing_limit'
@@ -451,27 +437,35 @@ class PleskApi {
      * @param array<string, mixed> $node
      * @param string[] $keys
      */
-    private function pickFirstStringValue(array $node, array $keys): ?string {
-        foreach ($keys as $key) {
-            if (array_key_exists($key, $node) && is_scalar($node[$key])) {
-                $value = trim((string) $node[$key]);
-                if ($value !== '') {
-                    return $value;
-                }
-            }
+    private function pickFirstStringValueDeep(array $node, array $keys): ?string {
+        $value = $this->pickFirstScalarValueDeep($node, $keys);
+        if ($value === null) {
+            return null;
         }
 
-        return null;
+        $value = trim($value);
+        return $value !== '' ? $value : null;
     }
 
     /**
+     * Busca de forma recursiva la primera clave candidata dentro del nodo.
+     *
      * @param array<string, mixed> $node
      * @param string[] $keys
      */
-    private function pickFirstScalarValue(array $node, array $keys): ?string {
+    private function pickFirstScalarValueDeep(array $node, array $keys): ?string {
         foreach ($keys as $key) {
             if (array_key_exists($key, $node) && is_scalar($node[$key])) {
                 return (string) $node[$key];
+            }
+        }
+
+        foreach ($node as $value) {
+            if (is_array($value)) {
+                $nested = $this->pickFirstScalarValueDeep($value, $keys);
+                if ($nested !== null) {
+                    return $nested;
+                }
             }
         }
 
