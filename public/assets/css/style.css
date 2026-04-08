@@ -340,3 +340,147 @@ code {
     margin-bottom: 1.5rem;
 }
 
+.dashboard-section {
+    margin-top: 2.5rem;
+}
+
+.section-heading {
+    margin-bottom: 1rem;
+}
+
+.section-heading h2 {
+    font-size: 1.5rem;
+    margin-bottom: 0.35rem;
+}
+
+.section-kicker {
+    display: inline-block;
+    margin-bottom: 0.4rem;
+    color: var(--primary);
+    font-weight: 700;
+    font-size: 0.75rem;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+}
+
+.section-management .section-heading h2,
+.section-kicker-management {
+    color: #0f766e;
+}
+
+.card-management {
+    border-top: 4px solid #0f766e;
+    background: linear-gradient(180deg, rgba(15, 118, 110, 0.05) 0%, #ffffff 140px);
+}
+
+.management-highlight {
+    border-left-color: #0f766e;
+    background: #ecfeff;
+}
+
+.action-row {
+    display: flex;
+    gap: 0.75rem;
+    flex-wrap: wrap;
+}
+
+.btn-grow {
+    flex: 1;
+}
+
+.btn-danger {
+    background: var(--error);
+    color: var(--white);
+}
+
+.btn-danger:hover {
+    background: #dc2626;
+}
+
+.manage-toolbar {
+    display: flex;
+    gap: 1rem;
+    align-items: end;
+    margin-bottom: 1.5rem;
+    flex-wrap: wrap;
+}
+
+.manage-domain-group {
+    flex: 1 1 320px;
+    margin-bottom: 0;
+}
+
+.management-summary {
+    margin-bottom: 1rem;
+    color: var(--gray-700);
+}
+
+.table-scroll {
+    overflow-x: auto;
+}
+
+.table-actions {
+    display: flex;
+    gap: 0.5rem;
+    flex-wrap: wrap;
+}
+
+.edit-row td {
+    background: var(--gray-50);
+}
+
+.inline-edit-form {
+    padding: 0.5rem 0;
+}
+
+.empty-state {
+    border: 1px dashed var(--gray-300);
+    border-radius: var(--radius);
+    padding: 1rem;
+    background: var(--gray-50);
+}
+
+.result-grid {
+    display: grid;
+    gap: 1rem;
+    margin: 1rem 0 1.5rem;
+}
+
+.result-label {
+    display: block;
+    margin-bottom: 0.35rem;
+    font-size: 0.75rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: var(--gray-500);
+}
+
+.badge-warning {
+    background: #fef3c7;
+    color: #92400e;
+}
+
+.badge-info {
+    background: #dbeafe;
+    color: #1d4ed8;
+}
+
+.badge-outline {
+    background: var(--gray-100);
+    color: var(--gray-700);
+}
+
+@media (max-width: 720px) {
+    .copy-all-container,
+    .action-row,
+    .manage-toolbar,
+    .table-actions {
+        flex-direction: column;
+        align-items: stretch;
+    }
+
+    .btn-grow {
+        flex: none;
+    }
+}

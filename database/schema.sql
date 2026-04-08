@@ -17,10 +17,17 @@ CREATE TABLE IF NOT EXISTS email_logs (
     email_address VARCHAR(255) NOT NULL,
     domain VARCHAR(255) NOT NULL,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    action_type ENUM('create', 'password_reset', 'update', 'delete') NOT NULL DEFAULT 'create',
     status ENUM('success', 'error') NOT NULL,
     error_message TEXT NULL,
     FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- Migracion manual para instalaciones existentes:
+-- ALTER TABLE email_logs
+--     ADD COLUMN action_type ENUM('create', 'password_reset', 'update', 'delete')
+--     NOT NULL DEFAULT 'create'
+--     AFTER created_at;
 
 -- Insertar usuario inicial (ejecutar manualmente con tus credenciales)
 -- Genera el hash con: php -r "echo password_hash('TU_PASSWORD', PASSWORD_BCRYPT);"
