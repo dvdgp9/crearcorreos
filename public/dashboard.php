@@ -715,6 +715,8 @@ $outgoingLimitOptions = getOutgoingLimitOptions();
 
                 <div class="card card-management">
                     <form method="POST" action="" class="manage-toolbar" id="manage-toolbar-form">
+                        <input type="hidden" name="action" value="load_mailboxes">
+
                         <div class="form-group manage-domain-group">
                             <label for="manage_domain">Dominio a gestionar</label>
                             <select name="manage_domain" id="manage_domain" required>
@@ -726,6 +728,8 @@ $outgoingLimitOptions = getOutgoingLimitOptions();
                                 <?php endforeach; ?>
                             </select>
                         </div>
+
+                        <button type="submit" class="btn btn-primary">Cargar cuentas</button>
                     </form>
 
                     <div id="manage-mailboxes-region">
@@ -1437,6 +1441,10 @@ $outgoingLimitOptions = getOutgoingLimitOptions();
             const manageDomainField = document.getElementById('manage_domain');
             if (manageDomainField) {
                 manageDomainField.addEventListener('change', loadSelectedDomain);
+
+                if (manageDomainField.value && !document.querySelector('#manage-mailboxes-region [data-list-row="mailboxes-table"]')) {
+                    loadSelectedDomain();
+                }
             }
         }
 
