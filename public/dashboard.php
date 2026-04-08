@@ -772,10 +772,15 @@ $outgoingLimitOptions = getOutgoingLimitOptions();
                                 <tbody>
                                     <?php foreach ($managedMailboxes as $mailbox): ?>
                                         <?php $rowId = getRowId($mailbox['email']); ?>
-                                        <tr data-list-row="mailboxes-table" data-search="<?= e(strtolower($mailbox['email'] . ' ' . ($mailbox['quota'] ?? '') . ' ' . ($mailbox['outgoing_limit'] ?? ''))) ?>">
+                                        <tr
+                                            data-list-row="mailboxes-table"
+                                            data-email="<?= e($mailbox['email']) ?>"
+                                            data-details-state="pending"
+                                            data-search="<?= e(strtolower($mailbox['email'] . ' ' . ($mailbox['quota'] ?? '') . ' ' . ($mailbox['outgoing_limit'] ?? ''))) ?>"
+                                        >
                                             <td><code><?= e($mailbox['email']) ?></code></td>
-                                            <td><?= e(formatMailboxValue($mailbox['quota'])) ?></td>
-                                            <td><?= e(formatMailboxValue($mailbox['outgoing_limit'])) ?></td>
+                                            <td data-field="quota"><?= e(formatMailboxValue($mailbox['quota'])) ?></td>
+                                            <td data-field="outgoing_limit"><?= e(formatMailboxValue($mailbox['outgoing_limit'])) ?></td>
                                             <td>
                                                 <div class="table-actions">
                                                     <button type="button" class="btn btn-sm btn-primary" data-ajax-action="reset_password" data-email="<?= e($mailbox['email']) ?>">Restablecer</button>
@@ -796,6 +801,11 @@ $outgoingLimitOptions = getOutgoingLimitOptions();
                                                     <input type="hidden" name="email" value="<?= e($mailbox['email']) ?>">
 
                                                     <div class="form-row">
+                                                        <div class="form-group">
+                                                            <label>Nueva contraseña (opcional)</label>
+                                                            <input type="text" name="edit_password" placeholder="Déjalo vacío para no cambiar">
+                                                        </div>
+
                                                         <div class="form-group">
                                                             <label>Cuota del buzón</label>
                                                             <select name="edit_quota">
@@ -914,6 +924,8 @@ $outgoingLimitOptions = getOutgoingLimitOptions();
         const outgoingLimitOptions = <?= json_encode($outgoingLimitOptions, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) ?>;
         const mailboxApiUrl = new URL('mailbox_api.php', window.location.href).toString();
         const tableStates = {};
+        const mailboxDetailCache = new Map();
+        const mailboxDetailPending = new Set();
 
         function activateTab(tabName) {
             document.querySelectorAll('[data-tab-trigger]').forEach(button => {
@@ -1111,10 +1123,10 @@ $outgoingLimitOptions = getOutgoingLimitOptions();
                 const searchText = escapeHtml((mailbox.email + ' ' + (mailbox.quota || '') + ' ' + (mailbox.outgoing_limit || '')).toLowerCase());
 
                 return `
-                    <tr data-list-row="mailboxes-table" data-search="${searchText}">
+                    <tr data-list-row="mailboxes-table" data-email="${escapeHtml(mailbox.email)}" data-details-state="pending" data-search="${searchText}">
                         <td><code>${escapeHtml(mailbox.email)}</code></td>
-                        <td>${quotaLabel}</td>
-                        <td>${outgoingLabel}</td>
+                        <td data-field="quota">${quotaLabel}</td>
+                        <td data-field="outgoing_limit">${outgoingLabel}</td>
                         <td>
                             <div class="table-actions">
                                 <button type="button" class="btn btn-sm btn-primary" data-ajax-action="reset_password" data-email="${escapeHtml(mailbox.email)}">Restablecer</button>
@@ -1130,6 +1142,10 @@ $outgoingLimitOptions = getOutgoingLimitOptions();
                                 <input type="hidden" name="manage_domain" value="${escapeHtml(domain)}">
                                 <input type="hidden" name="email" value="${escapeHtml(mailbox.email)}">
                                 <div class="form-row">
+                                    <div class="form-group">
+                                        <label>Nueva contraseña (opcional)</label>
+                                        <input type="text" name="edit_password" placeholder="Dejalo vacio para no cambiar">
+                                    </div>
                                     <div class="form-group">
                                         <label>Cuota del buzón</label>
                                         <select name="edit_quota">
@@ -1193,6 +1209,74 @@ $outgoingLimitOptions = getOutgoingLimitOptions();
             `;
 
             initPaginatedList('mailboxes-table', 250);
+        }
+
+        function applyMailboxDetailsToRow(row, details) {
+            if (!row) {
+                return;
+            }
+
+            const quotaCell = row.querySelector('[data-field="quota"]');
+            const outgoingCell = row.querySelector('[data-field="outgoing_limit"]');
+            const quotaValue = details && details.quota ? details.quota : 'No disponible';
+            const outgoingValue = details && details.outgoing_limit ? details.outgoing_limit : 'No disponible';
+
+            if (quotaCell) {
+                quotaCell.textContent = quotaValue;
+            }
+
+            if (outgoingCell) {
+                outgoingCell.textContent = outgoingValue;
+            }
+
+            const email = row.dataset.email || '';
+            row.dataset.search = (email + ' ' + quotaValue + ' ' + outgoingValue).toLowerCase();
+            row.dataset.detailsState = 'loaded';
+        }
+
+        async function loadMailboxDetailsForRow(row) {
+            const email = row.dataset.email || '';
+            if (!email) {
+                return;
+            }
+
+            if (mailboxDetailCache.has(email)) {
+                applyMailboxDetailsToRow(row, mailboxDetailCache.get(email));
+                return;
+            }
+
+            if (mailboxDetailPending.has(email)) {
+                return;
+            }
+
+            mailboxDetailPending.add(email);
+            try {
+                const formData = new FormData();
+                formData.append('action', 'mailbox_info');
+                formData.append('email', email);
+                const payload = await postMailboxAction(formData);
+                const details = payload.mailbox || null;
+                mailboxDetailCache.set(email, details);
+                applyMailboxDetailsToRow(row, details);
+            } catch (error) {
+                row.dataset.detailsState = 'error';
+            } finally {
+                mailboxDetailPending.delete(email);
+            }
+        }
+
+        function loadVisibleMailboxDetails() {
+            const table = document.getElementById('mailboxes-table');
+            if (!table) {
+                return;
+            }
+
+            const visibleRows = Array.from(table.querySelectorAll('tbody tr[data-list-row="mailboxes-table"][data-email]')).filter(row => !row.hidden);
+            visibleRows.slice(0, 15).forEach(row => {
+                if (row.dataset.detailsState !== 'loaded') {
+                    loadMailboxDetailsForRow(row);
+                }
+            });
         }
 
         function renderHistory(logs) {
@@ -1305,6 +1389,10 @@ $outgoingLimitOptions = getOutgoingLimitOptions();
 
                 if (nextButton) {
                     nextButton.disabled = currentPage >= totalPages || filteredRows.length === 0;
+                }
+
+                if (tableId === 'mailboxes-table') {
+                    loadVisibleMailboxDetails();
                 }
             };
 

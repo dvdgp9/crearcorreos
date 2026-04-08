@@ -41,14 +41,14 @@ function formatLogRows(array $logs): array {
 $action = $_POST['action'] ?? '';
 $manageDomain = trim($_POST['manage_domain'] ?? '');
 
-if (!in_array($action, ['load_mailboxes', 'reset_password', 'update_mailbox', 'delete_mailbox'], true)) {
+if (!in_array($action, ['load_mailboxes', 'reset_password', 'update_mailbox', 'delete_mailbox', 'mailbox_info'], true)) {
     respondJson([
         'success' => false,
         'message' => 'Acción no permitida'
     ], 400);
 }
 
-if ($manageDomain === '') {
+if ($action !== 'mailbox_info' && $manageDomain === '') {
     respondJson([
         'success' => false,
         'message' => 'Debes seleccionar un dominio para gestionar cuentas'
@@ -60,6 +60,25 @@ $plesk = new PleskApi();
 try {
     $message = '';
     $resetResult = null;
+
+    if ($action === 'mailbox_info') {
+        $email = strtolower(trim($_POST['email'] ?? ''));
+        if ($email === '') {
+            throw new Exception('Debes indicar un correo');
+        }
+
+        $info = $plesk->getMailboxInfo($email);
+
+        respondJson([
+            'success' => true,
+            'message' => 'Detalle de cuenta cargado.',
+            'mailbox' => [
+                'email' => $info['email'],
+                'quota' => $info['quota'],
+                'outgoing_limit' => $info['outgoing_limit']
+            ]
+        ]);
+    }
 
     if ($action === 'reset_password') {
         $email = strtolower(trim($_POST['email'] ?? ''));
@@ -85,7 +104,12 @@ try {
         $email = strtolower(trim($_POST['email'] ?? ''));
         $quotaSelection = $_POST['edit_quota'] ?? '__keep__';
         $outgoingSelection = $_POST['edit_outgoing_limit'] ?? '__keep__';
+        $passwordSelection = trim($_POST['edit_password'] ?? '');
         $changes = [];
+
+        if ($passwordSelection !== '') {
+            $changes['password'] = $passwordSelection;
+        }
 
         if ($quotaSelection !== '__keep__') {
             $changes['quota'] = $quotaSelection;
@@ -148,7 +172,7 @@ try {
     ]);
 } catch (Exception $e) {
     $emailForLog = strtolower(trim($_POST['email'] ?? ''));
-    if ($emailForLog !== '' && strpos($emailForLog, '@') !== false) {
+    if ($action !== 'mailbox_info' && $emailForLog !== '' && strpos($emailForLog, '@') !== false) {
         [, $logDomain] = explode('@', $emailForLog, 2);
         $actionType = $action === 'reset_password' ? 'password_reset' : ($action === 'update_mailbox' ? 'update' : 'delete');
 
