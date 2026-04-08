@@ -130,7 +130,7 @@ function formatQuotaDisplay(?string $value): string {
 function formatOutgoingLimitDisplay(?string $value): string {
     $value = formatMailboxValue($value);
     if ($value === 'No disponible') {
-        return $value;
+        return 'Por defecto';
     }
 
     return $value === '-1' ? 'Ilimitado' : $value;
@@ -965,6 +965,8 @@ $outgoingLimitOptions = getOutgoingLimitOptions();
         const tableStates = {};
         const mailboxDetailCache = new Map();
         const mailboxDetailPending = new Set();
+        const mailboxDetailQueue = [];
+        let mailboxDetailWorkers = 0;
 
         function activateTab(tabName) {
             document.querySelectorAll('[data-tab-trigger]').forEach(button => {
@@ -1079,7 +1081,7 @@ $outgoingLimitOptions = getOutgoingLimitOptions();
 
         function formatOutgoingLimitValue(value) {
             if (value === null || value === undefined || value === '') {
-                return 'No disponible';
+                return 'Por defecto';
             }
 
             const normalized = String(value).trim();
@@ -1374,6 +1376,39 @@ $outgoingLimitOptions = getOutgoingLimitOptions();
             }
         }
 
+        async function processMailboxDetailQueue() {
+            if (mailboxDetailWorkers >= 4 || mailboxDetailQueue.length === 0) {
+                return;
+            }
+
+            mailboxDetailWorkers += 1;
+            const row = mailboxDetailQueue.shift();
+
+            try {
+                if (row) {
+                    await loadMailboxDetailsForRow(row);
+                }
+            } finally {
+                mailboxDetailWorkers -= 1;
+                if (mailboxDetailQueue.length > 0) {
+                    processMailboxDetailQueue();
+                }
+            }
+        }
+
+        function enqueueMailboxDetailRow(row) {
+            const email = row.dataset.email || '';
+            if (!email || row.dataset.detailsState === 'loaded' || mailboxDetailPending.has(email)) {
+                return;
+            }
+
+            if (!mailboxDetailQueue.includes(row)) {
+                mailboxDetailQueue.push(row);
+            }
+
+            processMailboxDetailQueue();
+        }
+
         function loadVisibleMailboxDetails() {
             const table = document.getElementById('mailboxes-table');
             if (!table) {
@@ -1381,10 +1416,8 @@ $outgoingLimitOptions = getOutgoingLimitOptions();
             }
 
             const visibleRows = Array.from(table.querySelectorAll('tbody tr[data-list-row="mailboxes-table"][data-email]')).filter(row => !row.hidden);
-            visibleRows.slice(0, 15).forEach(row => {
-                if (row.dataset.detailsState !== 'loaded') {
-                    loadMailboxDetailsForRow(row);
-                }
+            visibleRows.forEach(row => {
+                enqueueMailboxDetailRow(row);
             });
         }
 
