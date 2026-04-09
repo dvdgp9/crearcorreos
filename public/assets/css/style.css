@@ -454,6 +454,46 @@ code {
     color: var(--gray-700);
 }
 
+.selected-mailboxes {
+    margin-bottom: 1rem;
+    padding: 1rem;
+    border: 1px solid var(--gray-200);
+    border-radius: var(--radius);
+    background: #f8fdff;
+}
+
+.selected-mailboxes-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+    margin-bottom: 0.75rem;
+    flex-wrap: wrap;
+}
+
+.selected-mailboxes-list {
+    display: flex;
+    gap: 0.5rem;
+    flex-wrap: wrap;
+}
+
+.selected-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    border: 1px solid var(--primary);
+    background: var(--white);
+    color: var(--primary-dark);
+    border-radius: 999px;
+    padding: 0.35rem 0.8rem;
+    cursor: pointer;
+    font-weight: 600;
+}
+
+.selected-chip-close {
+    opacity: 0.7;
+}
+
 .table-scroll {
     overflow-x: auto;
 }
@@ -488,6 +528,15 @@ code {
     display: flex;
     gap: 0.5rem;
     flex-wrap: wrap;
+}
+
+.checkbox-cell {
+    width: 52px;
+    white-space: nowrap;
+}
+
+.row-selected td {
+    background: rgba(35, 170, 197, 0.08);
 }
 
 .edit-row td {

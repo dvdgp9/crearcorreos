@@ -778,6 +778,7 @@ $outgoingLimitOptions = getOutgoingLimitOptions();
                             <p class="text-muted">Si el dominio existe en Plesk pero no hay buzones, esta tabla aparecerá vacía.</p>
                         </div>
                     <?php elseif (!empty($managedMailboxes)): ?>
+                        <div id="selected-mailboxes-region"></div>
                         <div class="management-summary">
                             <strong><?= count($managedMailboxes) ?></strong> cuenta(s) encontradas en <code>@<?= e($manageDomain) ?></code>
                         </div>
@@ -802,6 +803,7 @@ $outgoingLimitOptions = getOutgoingLimitOptions();
                             <table class="table" id="mailboxes-table">
                                 <thead>
                                     <tr>
+                                        <th class="checkbox-cell">Sel.</th>
                                         <th>Correo</th>
                                         <th>Cuota</th>
                                         <th>Salida/hora</th>
@@ -817,6 +819,9 @@ $outgoingLimitOptions = getOutgoingLimitOptions();
                                             data-details-state="pending"
                                             data-search="<?= e(strtolower($mailbox['email'] . ' ' . ($mailbox['quota'] ?? '') . ' ' . ($mailbox['outgoing_limit'] ?? ''))) ?>"
                                         >
+                                            <td class="checkbox-cell">
+                                                <input type="checkbox" data-select-mailbox="<?= e($mailbox['email']) ?>">
+                                            </td>
                                             <td><code><?= e($mailbox['email']) ?></code></td>
                                             <td data-field="quota"><?= e(formatQuotaDisplay($mailbox['quota'])) ?></td>
                                             <td data-field="outgoing_limit"><?= e(formatOutgoingLimitDisplay($mailbox['outgoing_limit'])) ?></td>
@@ -966,7 +971,9 @@ $outgoingLimitOptions = getOutgoingLimitOptions();
         const mailboxDetailCache = new Map();
         const mailboxDetailPending = new Set();
         const mailboxDetailQueue = [];
+        const selectedMailboxes = new Set();
         let mailboxDetailWorkers = 0;
+        let currentManageDomain = '';
 
         function activateTab(tabName) {
             document.querySelectorAll('[data-tab-trigger]').forEach(button => {
@@ -1164,6 +1171,49 @@ $outgoingLimitOptions = getOutgoingLimitOptions();
             return html;
         }
 
+        function renderSelectedMailboxesPanel() {
+            if (selectedMailboxes.size === 0) {
+                return '<div id="selected-mailboxes-region"></div>';
+            }
+
+            const items = Array.from(selectedMailboxes).sort().map(email => `
+                <button type="button" class="selected-chip" data-remove-selected="${escapeHtml(email)}">
+                    <span>${escapeHtml(email)}</span>
+                    <span class="selected-chip-close">x</span>
+                </button>
+            `).join('');
+
+            return `
+                <div id="selected-mailboxes-region" class="selected-mailboxes">
+                    <div class="selected-mailboxes-header">
+                        <strong>${selectedMailboxes.size}</strong> seleccionado(s)
+                        <button type="button" class="btn btn-sm btn-outline" data-clear-selected="true">Limpiar seleccion</button>
+                    </div>
+                    <div class="selected-mailboxes-list">
+                        ${items}
+                    </div>
+                </div>
+            `;
+        }
+
+        function syncSelectedRows() {
+            document.querySelectorAll('#mailboxes-table tbody tr[data-email]').forEach(row => {
+                const email = row.dataset.email || '';
+                const isSelected = selectedMailboxes.has(email);
+                row.classList.toggle('row-selected', isSelected);
+
+                const checkbox = row.querySelector('input[data-select-mailbox]');
+                if (checkbox) {
+                    checkbox.checked = isSelected;
+                }
+            });
+
+            const selectedRegion = document.getElementById('selected-mailboxes-region');
+            if (selectedRegion) {
+                selectedRegion.outerHTML = renderSelectedMailboxesPanel();
+            }
+        }
+
         function renderResetResult(result) {
             const region = document.getElementById('reset-result-region');
             if (!region) {
@@ -1216,8 +1266,14 @@ $outgoingLimitOptions = getOutgoingLimitOptions();
                 return;
             }
 
+            if (currentManageDomain !== domain) {
+                selectedMailboxes.clear();
+                currentManageDomain = domain;
+            }
+
             if (!Array.isArray(mailboxes) || mailboxes.length === 0) {
                 region.innerHTML = `
+                    ${renderSelectedMailboxesPanel()}
                     <div class="empty-state">
                         <strong>No hay cuentas cargadas para este dominio.</strong>
                         <p class="text-muted">Si el dominio existe en Plesk pero no hay buzones, esta tabla aparecerá vacía.</p>
@@ -1234,6 +1290,9 @@ $outgoingLimitOptions = getOutgoingLimitOptions();
 
                 return `
                     <tr data-list-row="mailboxes-table" data-email="${escapeHtml(mailbox.email)}" data-details-state="pending" data-search="${searchText}">
+                        <td class="checkbox-cell">
+                            <input type="checkbox" data-select-mailbox="${escapeHtml(mailbox.email)}" ${selectedMailboxes.has(mailbox.email) ? 'checked' : ''}>
+                        </td>
                         <td><code>${escapeHtml(mailbox.email)}</code></td>
                         <td data-field="quota">${quotaLabel}</td>
                         <td data-field="outgoing_limit">${outgoingLabel}</td>
@@ -1280,6 +1339,7 @@ $outgoingLimitOptions = getOutgoingLimitOptions();
             }).join('');
 
             region.innerHTML = `
+                ${renderSelectedMailboxesPanel()}
                 <div class="management-summary">
                     <strong>${mailboxes.length}</strong> cuenta(s) encontradas en <code>@${escapeHtml(domain)}</code>
                 </div>
@@ -1302,6 +1362,7 @@ $outgoingLimitOptions = getOutgoingLimitOptions();
                     <table class="table" id="mailboxes-table">
                         <thead>
                             <tr>
+                                <th class="checkbox-cell">Sel.</th>
                                 <th>Correo</th>
                                 <th>Cuota</th>
                                 <th>Salida/hora</th>
@@ -1319,6 +1380,7 @@ $outgoingLimitOptions = getOutgoingLimitOptions();
             `;
 
             initPaginatedList('mailboxes-table', 250);
+            syncSelectedRows();
         }
 
         function applyMailboxDetailsToRow(row, details) {
@@ -1681,6 +1743,20 @@ $outgoingLimitOptions = getOutgoingLimitOptions();
         const manageRegion = document.getElementById('manage-mailboxes-region');
         if (manageRegion) {
             manageRegion.addEventListener('click', async event => {
+                const removeSelectedButton = event.target.closest('[data-remove-selected]');
+                if (removeSelectedButton) {
+                    selectedMailboxes.delete(removeSelectedButton.dataset.removeSelected || '');
+                    syncSelectedRows();
+                    return;
+                }
+
+                const clearSelectedButton = event.target.closest('[data-clear-selected]');
+                if (clearSelectedButton) {
+                    selectedMailboxes.clear();
+                    syncSelectedRows();
+                    return;
+                }
+
                 const actionButton = event.target.closest('[data-ajax-action]');
                 if (!actionButton) {
                     return;
@@ -1725,6 +1801,26 @@ $outgoingLimitOptions = getOutgoingLimitOptions();
                     showAjaxFeedback('error', error.message);
                 }
             });
+
+            manageRegion.addEventListener('change', event => {
+                const checkbox = event.target.closest('input[data-select-mailbox]');
+                if (!checkbox) {
+                    return;
+                }
+
+                const email = checkbox.dataset.selectMailbox || '';
+                if (!email) {
+                    return;
+                }
+
+                if (checkbox.checked) {
+                    selectedMailboxes.add(email);
+                } else {
+                    selectedMailboxes.delete(email);
+                }
+
+                syncSelectedRows();
+            });
         }
 
         document.querySelectorAll('[data-tab-trigger]').forEach(button => {
@@ -1739,6 +1835,7 @@ $outgoingLimitOptions = getOutgoingLimitOptions();
         }
 
         initPaginatedList('mailboxes-table', 250);
+        syncSelectedRows();
         initPaginatedList('history-table', 250);
     </script>
 </body>
