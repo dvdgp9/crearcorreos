@@ -1136,6 +1136,10 @@ $outgoingLimitOptions = getOutgoingLimitOptions();
             return confirm('Se va a borrar la cuenta ' + email + '. Esta acción no se puede deshacer. ¿Continuar?');
         }
 
+        function confirmBulkDelete(count) {
+            return confirm('Se van a borrar ' + count + ' cuentas seleccionadas. Esta acción no se puede deshacer. ¿Continuar?');
+        }
+
         function confirmReset(email) {
             return confirm('Se generará una nueva contraseña para ' + email + '. ¿Quieres continuar?');
         }
@@ -1187,7 +1191,10 @@ $outgoingLimitOptions = getOutgoingLimitOptions();
                 <div id="selected-mailboxes-region" class="selected-mailboxes">
                     <div class="selected-mailboxes-header">
                         <strong>${selectedMailboxes.size}</strong> seleccionado(s)
-                        <button type="button" class="btn btn-sm btn-outline" data-clear-selected="true">Limpiar seleccion</button>
+                        <div class="selected-mailboxes-actions">
+                            <button type="button" class="btn btn-sm btn-danger" data-bulk-delete-selected="true">Borrar seleccionados</button>
+                            <button type="button" class="btn btn-sm btn-outline" data-clear-selected="true">Limpiar seleccion</button>
+                        </div>
                     </div>
                     <div class="selected-mailboxes-list">
                         ${items}
@@ -1754,6 +1761,33 @@ $outgoingLimitOptions = getOutgoingLimitOptions();
                 if (clearSelectedButton) {
                     selectedMailboxes.clear();
                     syncSelectedRows();
+                    return;
+                }
+
+                const bulkDeleteButton = event.target.closest('[data-bulk-delete-selected]');
+                if (bulkDeleteButton) {
+                    if (selectedMailboxes.size === 0 || !confirmBulkDelete(selectedMailboxes.size)) {
+                        return;
+                    }
+
+                    const manageDomainField = document.getElementById('manage_domain');
+                    const manageDomain = manageDomainField ? manageDomainField.value : '';
+                    const formData = new FormData();
+                    formData.append('action', 'bulk_delete_mailboxes');
+                    formData.append('manage_domain', manageDomain);
+
+                    Array.from(selectedMailboxes).forEach(email => {
+                        formData.append('emails[]', email);
+                    });
+
+                    try {
+                        await handleManageAction(formData);
+                        selectedMailboxes.clear();
+                        syncSelectedRows();
+                    } catch (error) {
+                        showAjaxFeedback('error', error.message);
+                    }
+
                     return;
                 }
 

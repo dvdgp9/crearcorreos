@@ -41,7 +41,7 @@ function formatLogRows(array $logs): array {
 $action = $_POST['action'] ?? '';
 $manageDomain = trim($_POST['manage_domain'] ?? '');
 
-if (!in_array($action, ['load_mailboxes', 'reset_password', 'update_mailbox', 'delete_mailbox', 'mailbox_info'], true)) {
+if (!in_array($action, ['load_mailboxes', 'reset_password', 'update_mailbox', 'delete_mailbox', 'bulk_delete_mailboxes', 'mailbox_info'], true)) {
     respondJson([
         'success' => false,
         'message' => 'Acción no permitida'
@@ -153,6 +153,66 @@ try {
         );
 
         $message = 'La cuenta se ha eliminado correctamente.';
+    }
+
+    if ($action === 'bulk_delete_mailboxes') {
+        $emails = $_POST['emails'] ?? [];
+        if (!is_array($emails) || empty($emails)) {
+            throw new Exception('Debes seleccionar al menos un correo');
+        }
+
+        $deletedCount = 0;
+        $errors = [];
+
+        foreach ($emails as $rawEmail) {
+            $email = strtolower(trim((string) $rawEmail));
+            if ($email === '' || !filter_var($email, FILTER_VALIDATE_EMAIL)) {
+                $errors[] = $rawEmail . ': correo no válido';
+                continue;
+            }
+
+            try {
+                $plesk->deleteMailbox($email);
+                [, $domain] = explode('@', $email, 2);
+
+                EmailLog::log(
+                    $currentUserId,
+                    $email,
+                    $domain,
+                    'success',
+                    null,
+                    'delete'
+                );
+
+                $deletedCount++;
+            } catch (Exception $e) {
+                [, $domain] = explode('@', $email, 2);
+
+                try {
+                    EmailLog::log(
+                        $currentUserId,
+                        $email,
+                        $domain,
+                        'error',
+                        $e->getMessage(),
+                        'delete'
+                    );
+                } catch (Exception $logError) {
+                    // Silenciar fallo de auditoría
+                }
+
+                $errors[] = $email . ': ' . $e->getMessage();
+            }
+        }
+
+        if ($deletedCount === 0) {
+            throw new Exception('No se pudo borrar ningún correo. ' . implode(' | ', $errors));
+        }
+
+        $message = 'Se borraron ' . $deletedCount . ' correo(s) correctamente.';
+        if (!empty($errors)) {
+            $message .= ' Errores: ' . implode(' | ', $errors);
+        }
     }
 
     if ($action === 'load_mailboxes') {

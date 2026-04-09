@@ -471,6 +471,12 @@ code {
     flex-wrap: wrap;
 }
 
+.selected-mailboxes-actions {
+    display: flex;
+    gap: 0.5rem;
+    flex-wrap: wrap;
+}
+
 .selected-mailboxes-list {
     display: flex;
     gap: 0.5rem;
