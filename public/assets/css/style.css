@@ -482,6 +482,43 @@ code {
     margin-bottom: 0;
 }
 
+.domain-search-row {
+    display: flex;
+    gap: 0.5rem;
+    align-items: center;
+    margin-bottom: 0.45rem;
+}
+
+.domain-search-input {
+    margin-bottom: 0;
+}
+
+.domain-search-clear {
+    white-space: nowrap;
+    padding-inline: 0.9rem;
+}
+
+.domain-search-meta {
+    min-height: 1.2rem;
+    margin-bottom: 0.4rem;
+}
+
+#manage_domain:disabled {
+    background: var(--gray-100);
+    color: var(--gray-500);
+    cursor: not-allowed;
+}
+
+#manage_domain_submit:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+    transform: none;
+}
+
+#manage_domain_submit:disabled:hover {
+    background-color: var(--primary);
+}
+
 .management-summary {
     margin-bottom: 1rem;
     color: var(--gray-700);
@@ -656,5 +693,10 @@ code {
 
     .list-page-size {
         width: 100%;
+    }
+
+    .domain-search-row {
+        flex-direction: column;
+        align-items: stretch;
     }
 }

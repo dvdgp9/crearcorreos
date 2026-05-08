@@ -761,7 +761,11 @@ $outgoingLimitOptions = getOutgoingLimitOptions();
 
                         <div class="form-group manage-domain-group">
                             <label for="manage_domain">Dominio a gestionar</label>
-                            <input type="search" id="manage_domain_search" class="domain-search-input" placeholder="Buscar dominio..." autocomplete="off">
+                            <div class="domain-search-row">
+                                <input type="search" id="manage_domain_search" class="domain-search-input" placeholder="Buscar dominio..." autocomplete="off" aria-describedby="manage_domain_hint">
+                                <button type="button" class="btn btn-outline btn-sm domain-search-clear" id="manage_domain_search_clear">Limpiar</button>
+                            </div>
+                            <small class="text-muted domain-search-meta" id="manage_domain_hint"></small>
                             <select name="manage_domain" id="manage_domain" required>
                                 <option value="">Selecciona dominio</option>
                                 <?php foreach ($domains as $d): ?>
@@ -772,7 +776,7 @@ $outgoingLimitOptions = getOutgoingLimitOptions();
                             </select>
                         </div>
 
-                        <button type="submit" class="btn btn-primary">Cargar cuentas</button>
+                        <button type="submit" class="btn btn-primary" id="manage_domain_submit">Cargar cuentas</button>
                     </form>
 
                     <div id="manage-mailboxes-region">
@@ -1744,23 +1748,65 @@ $outgoingLimitOptions = getOutgoingLimitOptions();
             const manageDomainField = document.getElementById('manage_domain');
             if (manageDomainField) {
                 const manageDomainSearch = document.getElementById('manage_domain_search');
+                const manageDomainHint = document.getElementById('manage_domain_hint');
+                const manageDomainSearchClear = document.getElementById('manage_domain_search_clear');
+                const manageDomainSubmit = document.getElementById('manage_domain_submit');
+
+                const updateManageSubmitState = () => {
+                    if (!manageDomainSubmit) {
+                        return;
+                    }
+
+                    manageDomainSubmit.disabled = manageDomainField.disabled || !manageDomainField.value;
+                };
+
                 if (manageDomainSearch) {
                     const domainOptions = Array.from(manageDomainField.options).map(option => ({
                         value: option.value,
                         text: option.textContent,
                         selected: option.selected
                     }));
+
+                    const realDomainOptions = domainOptions.filter(option => option.value !== '');
+
+                    const updateDomainHint = (visibleCount, totalCount, searchTerm) => {
+                        if (!manageDomainHint) {
+                            return;
+                        }
+
+                        if (searchTerm) {
+                            if (visibleCount === 0) {
+                                manageDomainHint.textContent = 'No hay dominios que coincidan con la búsqueda.';
+                                return;
+                            }
+
+                            manageDomainHint.textContent = `Mostrando ${visibleCount} de ${totalCount} dominio(s).`;
+                            return;
+                        }
+
+                        manageDomainHint.textContent = `${totalCount} dominio(s) disponibles.`;
+                    };
                     
                     const renderDomainOptions = () => {
                         const search = manageDomainSearch.value.trim().toLowerCase();
                         const currentValue = manageDomainField.value;
+                        const visibleDomains = realDomainOptions.filter(optionData => {
+                            if (!search) {
+                                return true;
+                            }
+
+                            return optionData.text.toLowerCase().includes(search) || optionData.value.toLowerCase().includes(search);
+                        });
                         
                         manageDomainField.innerHTML = '';
-                        domainOptions.forEach(optionData => {
-                            if (optionData.value && search && !optionData.text.toLowerCase().includes(search) && !optionData.value.toLowerCase().includes(search)) {
-                                return;
-                            }
-                            
+                        const placeholder = document.createElement('option');
+                        placeholder.value = '';
+                        placeholder.textContent = visibleDomains.length > 0
+                            ? `Selecciona dominio (${visibleDomains.length})`
+                            : 'Sin dominios coincidentes';
+                        manageDomainField.appendChild(placeholder);
+
+                        visibleDomains.forEach(optionData => {
                             const option = document.createElement('option');
                             option.value = optionData.value;
                             option.textContent = optionData.text;
@@ -1771,12 +1817,31 @@ $outgoingLimitOptions = getOutgoingLimitOptions();
                         if (currentValue && !Array.from(manageDomainField.options).some(option => option.value === currentValue)) {
                             manageDomainField.value = '';
                         }
+
+                        manageDomainField.disabled = visibleDomains.length === 0;
+                        updateDomainHint(visibleDomains.length, realDomainOptions.length, search);
+                        updateManageSubmitState();
                     };
                     
                     manageDomainSearch.addEventListener('input', renderDomainOptions);
+
+                    if (manageDomainSearchClear) {
+                        manageDomainSearchClear.addEventListener('click', () => {
+                            manageDomainSearch.value = '';
+                            renderDomainOptions();
+                            manageDomainSearch.focus();
+                        });
+                    }
+
+                    renderDomainOptions();
                 }
                 
-                manageDomainField.addEventListener('change', loadSelectedDomain);
+                manageDomainField.addEventListener('change', async () => {
+                    updateManageSubmitState();
+                    await loadSelectedDomain();
+                });
+
+                updateManageSubmitState();
 
                 if (manageDomainField.value && !document.querySelector('#manage-mailboxes-region [data-list-row="mailboxes-table"]')) {
                     loadSelectedDomain();
