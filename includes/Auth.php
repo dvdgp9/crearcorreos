@@ -5,7 +5,10 @@
 
 class Auth {
     
-    public static function login(string $email, string $password): bool {
+    private const REMEMBER_COOKIE = 'remember_token';
+    private const REMEMBER_DAYS = 60;
+    
+    public static function login(string $email, string $password, bool $remember = false): bool {
         $db = Database::getConnection();
         
         $stmt = $db->prepare("SELECT id, email, password_hash, is_active FROM users WHERE email = ?");
@@ -34,10 +37,16 @@ class Auth {
         $_SESSION['logged_in'] = true;
         $_SESSION['login_time'] = time();
         
+        if ($remember) {
+            self::createRememberToken((int)$user['id']);
+        }
+        
         return true;
     }
     
     public static function logout(): void {
+        self::deleteCurrentRememberToken();
+        
         $_SESSION = [];
         
         if (ini_get("session.use_cookies")) {
@@ -52,6 +61,10 @@ class Auth {
     }
     
     public static function isLoggedIn(): bool {
+        if ((!isset($_SESSION['logged_in']) || $_SESSION['logged_in'] !== true) && self::loginFromRememberToken()) {
+            return true;
+        }
+        
         if (!isset($_SESSION['logged_in']) || $_SESSION['logged_in'] !== true) {
             return false;
         }
@@ -80,6 +93,102 @@ class Auth {
     
     public static function getUserEmail(): ?string {
         return $_SESSION['user_email'] ?? null;
+    }
+    
+    private static function createRememberToken(int $userId): void {
+        $db = Database::getConnection();
+        $selector = bin2hex(random_bytes(12));
+        $validator = bin2hex(random_bytes(32));
+        $validatorHash = hash('sha256', $validator);
+        $expiresAt = date('Y-m-d H:i:s', time() + (self::REMEMBER_DAYS * 24 * 60 * 60));
+        
+        $stmt = $db->prepare("INSERT INTO remember_tokens (user_id, selector, validator_hash, expires_at) VALUES (?, ?, ?, ?)");
+        $stmt->execute([$userId, $selector, $validatorHash, $expiresAt]);
+        
+        self::setRememberCookie($selector . ':' . $validator);
+    }
+    
+    private static function loginFromRememberToken(): bool {
+        if (empty($_COOKIE[self::REMEMBER_COOKIE]) || strpos($_COOKIE[self::REMEMBER_COOKIE], ':') === false) {
+            return false;
+        }
+        
+        [$selector, $validator] = explode(':', $_COOKIE[self::REMEMBER_COOKIE], 2);
+        if ($selector === '' || $validator === '') {
+            self::clearRememberCookie();
+            return false;
+        }
+        
+        $db = Database::getConnection();
+        $stmt = $db->prepare("
+            SELECT rt.id, rt.user_id, rt.validator_hash, u.email, u.is_active
+            FROM remember_tokens rt
+            INNER JOIN users u ON u.id = rt.user_id
+            WHERE rt.selector = ? AND rt.expires_at > NOW()
+            LIMIT 1
+        ");
+        $stmt->execute([$selector]);
+        $token = $stmt->fetch();
+        
+        if (!$token || !$token['is_active'] || !hash_equals($token['validator_hash'], hash('sha256', $validator))) {
+            self::deleteRememberTokenBySelector($selector);
+            self::clearRememberCookie();
+            return false;
+        }
+        
+        $_SESSION['user_id'] = (int)$token['user_id'];
+        $_SESSION['user_email'] = $token['email'];
+        $_SESSION['logged_in'] = true;
+        $_SESSION['login_time'] = time();
+        
+        $updateStmt = $db->prepare("UPDATE users SET last_login = NOW() WHERE id = ?");
+        $updateStmt->execute([(int)$token['user_id']]);
+        
+        self::deleteRememberTokenBySelector($selector);
+        self::createRememberToken((int)$token['user_id']);
+        
+        return true;
+    }
+    
+    private static function deleteCurrentRememberToken(): void {
+        if (empty($_COOKIE[self::REMEMBER_COOKIE]) || strpos($_COOKIE[self::REMEMBER_COOKIE], ':') === false) {
+            self::clearRememberCookie();
+            return;
+        }
+        
+        [$selector] = explode(':', $_COOKIE[self::REMEMBER_COOKIE], 2);
+        self::deleteRememberTokenBySelector($selector);
+        self::clearRememberCookie();
+    }
+    
+    private static function deleteRememberTokenBySelector(string $selector): void {
+        if ($selector === '') {
+            return;
+        }
+        
+        $db = Database::getConnection();
+        $stmt = $db->prepare("DELETE FROM remember_tokens WHERE selector = ?");
+        $stmt->execute([$selector]);
+    }
+    
+    private static function setRememberCookie(string $value): void {
+        setcookie(self::REMEMBER_COOKIE, $value, [
+            'expires' => time() + (self::REMEMBER_DAYS * 24 * 60 * 60),
+            'path' => '/',
+            'secure' => !empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off',
+            'httponly' => true,
+            'samesite' => 'Lax',
+        ]);
+    }
+    
+    private static function clearRememberCookie(): void {
+        setcookie(self::REMEMBER_COOKIE, '', [
+            'expires' => time() - 3600,
+            'path' => '/',
+            'secure' => !empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off',
+            'httponly' => true,
+            'samesite' => 'Lax',
+        ]);
     }
     
     // ============================================
