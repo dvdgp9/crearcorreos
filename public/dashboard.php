@@ -1796,6 +1796,31 @@ $outgoingLimitOptions = getOutgoingLimitOptions();
                             }
 
                             return optionData.text.toLowerCase().includes(search) || optionData.value.toLowerCase().includes(search);
+                        }).sort((a, b) => {
+                            const aName = (a.value || '').toLowerCase();
+                            const bName = (b.value || '').toLowerCase();
+                            const aIndex = search ? aName.indexOf(search) : 0;
+                            const bIndex = search ? bName.indexOf(search) : 0;
+                            const aLabels = aName.split('.').length;
+                            const bLabels = bName.split('.').length;
+                            const aIsApex = aLabels <= 2;
+                            const bIsApex = bLabels <= 2;
+
+                            if (search) {
+                                if (aIsApex !== bIsApex) {
+                                    return aIsApex ? -1 : 1;
+                                }
+
+                                if (aIndex !== bIndex) {
+                                    return aIndex - bIndex;
+                                }
+
+                                if (aLabels !== bLabels) {
+                                    return aLabels - bLabels;
+                                }
+                            }
+
+                            return aName.localeCompare(bName);
                         });
                         
                         manageDomainField.innerHTML = '';
