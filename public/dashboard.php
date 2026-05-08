@@ -180,6 +180,9 @@ $activeTab = in_array($action, ['load_mailboxes', 'reset_password', 'update_mail
 
 try {
     $domains = $plesk->getDomains();
+    usort($domains, static function (array $a, array $b): int {
+        return strcasecmp($a['name'] ?? '', $b['name'] ?? '');
+    });
 } catch (Exception $e) {
     $error = 'Error al conectar con Plesk: ' . $e->getMessage();
 }
@@ -758,6 +761,7 @@ $outgoingLimitOptions = getOutgoingLimitOptions();
 
                         <div class="form-group manage-domain-group">
                             <label for="manage_domain">Dominio a gestionar</label>
+                            <input type="search" id="manage_domain_search" class="domain-search-input" placeholder="Buscar dominio..." autocomplete="off">
                             <select name="manage_domain" id="manage_domain" required>
                                 <option value="">Selecciona dominio</option>
                                 <?php foreach ($domains as $d): ?>
@@ -1739,6 +1743,39 @@ $outgoingLimitOptions = getOutgoingLimitOptions();
 
             const manageDomainField = document.getElementById('manage_domain');
             if (manageDomainField) {
+                const manageDomainSearch = document.getElementById('manage_domain_search');
+                if (manageDomainSearch) {
+                    const domainOptions = Array.from(manageDomainField.options).map(option => ({
+                        value: option.value,
+                        text: option.textContent,
+                        selected: option.selected
+                    }));
+                    
+                    const renderDomainOptions = () => {
+                        const search = manageDomainSearch.value.trim().toLowerCase();
+                        const currentValue = manageDomainField.value;
+                        
+                        manageDomainField.innerHTML = '';
+                        domainOptions.forEach(optionData => {
+                            if (optionData.value && search && !optionData.text.toLowerCase().includes(search) && !optionData.value.toLowerCase().includes(search)) {
+                                return;
+                            }
+                            
+                            const option = document.createElement('option');
+                            option.value = optionData.value;
+                            option.textContent = optionData.text;
+                            option.selected = optionData.value === currentValue;
+                            manageDomainField.appendChild(option);
+                        });
+                        
+                        if (currentValue && !Array.from(manageDomainField.options).some(option => option.value === currentValue)) {
+                            manageDomainField.value = '';
+                        }
+                    };
+                    
+                    manageDomainSearch.addEventListener('input', renderDomainOptions);
+                }
+                
                 manageDomainField.addEventListener('change', loadSelectedDomain);
 
                 if (manageDomainField.value && !document.querySelector('#manage-mailboxes-region [data-list-row="mailboxes-table"]')) {
