@@ -17,10 +17,11 @@ $error = '';
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $email = trim($_POST['email'] ?? '');
     $password = $_POST['password'] ?? '';
+    $remember = isset($_POST['remember']);
     
     if (empty($email) || empty($password)) {
         $error = 'Por favor, introduce email y contraseña';
-    } elseif (Auth::login($email, $password)) {
+    } elseif (Auth::login($email, $password, $remember)) {
         header('Location: dashboard.php');
         exit;
     } else {
@@ -59,6 +60,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     <input type="password" id="password" name="password" required 
                            placeholder="••••••••">
                 </div>
+                
+                <label class="checkbox-field login-remember">
+                    <input type="checkbox" name="remember" value="1" <?= isset($_POST['remember']) ? 'checked' : '' ?>>
+                    <span>Recuérdame durante 60 días</span>
+                </label>
                 
                 <button type="submit" class="btn btn-primary btn-block">
                     Iniciar Sesión
