@@ -787,8 +787,9 @@ $outgoingLimitOptions = getOutgoingLimitOptions();
                         </div>
                     <?php elseif (!empty($managedMailboxes)): ?>
                         <div id="selected-mailboxes-region"></div>
-                        <div class="management-summary">
-                            <strong><?= count($managedMailboxes) ?></strong> cuenta(s) encontradas en <code>@<?= e($manageDomain) ?></code>
+                        <div class="management-summary management-summary-with-actions">
+                            <span><strong><?= count($managedMailboxes) ?></strong> cuenta(s) encontradas en <code>@<?= e($manageDomain) ?></code></span>
+                            <a href="export_mailboxes.php?domain=<?= e(rawurlencode($manageDomain)) ?>" class="btn btn-sm btn-outline" download>Descargar CSV</a>
                         </div>
 
                         <div class="list-toolbar">
@@ -1355,8 +1356,9 @@ $outgoingLimitOptions = getOutgoingLimitOptions();
 
             region.innerHTML = `
                 ${renderSelectedMailboxesPanel()}
-                <div class="management-summary">
-                    <strong>${mailboxes.length}</strong> cuenta(s) encontradas en <code>@${escapeHtml(domain)}</code>
+                <div class="management-summary management-summary-with-actions">
+                    <span><strong>${mailboxes.length}</strong> cuenta(s) encontradas en <code>@${escapeHtml(domain)}</code></span>
+                    <a href="export_mailboxes.php?domain=${encodeURIComponent(domain)}" class="btn btn-sm btn-outline" download>Descargar CSV</a>
                 </div>
                 <div class="list-toolbar">
                     <div class="list-search">
