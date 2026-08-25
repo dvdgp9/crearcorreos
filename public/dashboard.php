@@ -665,12 +665,27 @@ $outgoingLimitOptions = getOutgoingLimitOptions();
 
                         <div class="form-group">
                             <label for="domain">Dominio</label>
+                            <div class="domain-search-row">
+                                <input type="search" id="create_domain_search" class="domain-search-input" placeholder="Buscar dominio..." autocomplete="off" aria-describedby="create_domain_hint">
+                                <button type="button" class="btn btn-outline btn-sm domain-search-clear" id="create_domain_search_clear">Limpiar</button>
+                            </div>
+                            <label class="checkbox-field domain-subdomain-toggle" for="hide_create_subdomains">
+                                <input type="checkbox" id="hide_create_subdomains">
+                                No mostrar subdominios
+                            </label>
+                            <small class="text-muted domain-search-meta" id="create_domain_hint"></small>
                             <select name="domain" id="domain" required>
                                 <option value="">Selecciona dominio</option>
-                                <?php foreach ($domains as $d): ?>
-                                    <option value="<?= e($d['name']) ?>" <?= (($_POST['domain'] ?? '') === $d['name']) ? 'selected' : '' ?>>
-                                        @<?= e($d['name']) ?>
-                                    </option>
+                                <?php foreach ($hierarchicalDomains as $d): ?>
+                                    <?php $domainOptionLabel = str_repeat('— ', (int) $d['depth']) . '@' . $d['name']; ?>
+                                    <option
+                                        value="<?= e($d['name']) ?>"
+                                        data-label="<?= e($domainOptionLabel) ?>"
+                                        data-depth="<?= (int) $d['depth'] ?>"
+                                        data-is-subdomain="<?= $d['is_subdomain'] ? 'true' : 'false' ?>"
+                                        data-root="<?= e($d['root']) ?>"
+                                        <?= strtolower($_POST['domain'] ?? '') === $d['name'] ? 'selected' : '' ?>
+                                    ><?= e($domainOptionLabel) ?></option>
                                 <?php endforeach; ?>
                             </select>
                         </div>
@@ -1675,6 +1690,109 @@ $outgoingLimitOptions = getOutgoingLimitOptions();
             updateList();
         }
 
+        function initHierarchicalDomainSelector(config) {
+            const domainField = document.getElementById(config.selectId);
+            const domainSearch = document.getElementById(config.searchId);
+            const domainHint = document.getElementById(config.hintId);
+            const domainSearchClear = document.getElementById(config.clearId);
+            const hideSubdomainsField = document.getElementById(config.hideId);
+
+            if (!domainField || !domainSearch) {
+                return;
+            }
+
+            const domainOptions = Array.from(domainField.options).map(option => ({
+                value: option.value,
+                text: option.dataset.label || option.textContent.trim(),
+                depth: Number(option.dataset.depth || 0),
+                isSubdomain: option.dataset.isSubdomain === 'true',
+                root: option.dataset.root || option.value
+            }));
+            const realDomainOptions = domainOptions.filter(option => option.value !== '');
+
+            const updateDomainHint = (visibleCount, searchTerm, hideSubdomains, hiddenCount, selectedSubdomain) => {
+                if (!domainHint) {
+                    return;
+                }
+
+                if (searchTerm) {
+                    domainHint.textContent = visibleCount === 0
+                        ? 'No hay dominios que coincidan con la búsqueda.'
+                        : `Mostrando ${visibleCount} de ${realDomainOptions.length} dominio(s)${hideSubdomains ? `; ${hiddenCount} subdominio(s) oculto(s)` : ''}.`;
+                    return;
+                }
+
+                const principalCount = realDomainOptions.filter(option => !option.isSubdomain).length;
+                domainHint.textContent = hideSubdomains
+                    ? `${principalCount} dominio(s) principal(es); ${hiddenCount} subdominio(s) oculto(s)${selectedSubdomain ? '; se conserva el seleccionado' : ''}.`
+                    : `${realDomainOptions.length} dominio(s) disponibles, ordenados por jerarquía.`;
+            };
+
+            const renderDomainOptions = () => {
+                const search = domainSearch.value.trim().toLowerCase();
+                const currentValue = domainField.value;
+                const hideSubdomains = hideSubdomainsField ? hideSubdomainsField.checked : false;
+                const selectedSubdomain = hideSubdomains && realDomainOptions.some(option => option.value === currentValue && option.isSubdomain);
+                const hiddenCount = hideSubdomains
+                    ? realDomainOptions.filter(option => option.isSubdomain && option.value !== currentValue).length
+                    : 0;
+                const visibleDomains = realDomainOptions.filter(option => {
+                    if (hideSubdomains && option.isSubdomain && option.value !== currentValue) {
+                        return false;
+                    }
+
+                    return !search || option.text.toLowerCase().includes(search) || option.value.toLowerCase().includes(search);
+                });
+
+                domainField.innerHTML = '';
+                const placeholder = document.createElement('option');
+                placeholder.value = '';
+                placeholder.textContent = visibleDomains.length > 0
+                    ? `Selecciona dominio (${visibleDomains.length})`
+                    : 'Sin dominios coincidentes';
+                domainField.appendChild(placeholder);
+
+                visibleDomains.forEach(optionData => {
+                    const option = document.createElement('option');
+                    option.value = optionData.value;
+                    option.textContent = optionData.text;
+                    option.selected = optionData.value === currentValue;
+                    option.dataset.label = optionData.text;
+                    option.dataset.depth = String(optionData.depth);
+                    option.dataset.isSubdomain = optionData.isSubdomain ? 'true' : 'false';
+                    option.dataset.root = optionData.root;
+                    domainField.appendChild(option);
+                });
+
+                if (currentValue && !Array.from(domainField.options).some(option => option.value === currentValue)) {
+                    domainField.value = '';
+                }
+
+                domainField.disabled = visibleDomains.length === 0;
+                updateDomainHint(visibleDomains.length, search, hideSubdomains, hiddenCount, selectedSubdomain);
+
+                if (typeof config.onRender === 'function') {
+                    config.onRender(domainField);
+                }
+            };
+
+            domainSearch.addEventListener('input', renderDomainOptions);
+
+            if (domainSearchClear) {
+                domainSearchClear.addEventListener('click', () => {
+                    domainSearch.value = '';
+                    renderDomainOptions();
+                    domainSearch.focus();
+                });
+            }
+
+            if (hideSubdomainsField) {
+                hideSubdomainsField.addEventListener('change', renderDomainOptions);
+            }
+
+            renderDomainOptions();
+        }
+
         function tryAutoSelectDomain() {
             const usernamesField = document.getElementById('usernames');
             const domainSelect = document.getElementById('domain');
@@ -1761,11 +1879,7 @@ $outgoingLimitOptions = getOutgoingLimitOptions();
 
             const manageDomainField = document.getElementById('manage_domain');
             if (manageDomainField) {
-                const manageDomainSearch = document.getElementById('manage_domain_search');
-                const manageDomainHint = document.getElementById('manage_domain_hint');
-                const manageDomainSearchClear = document.getElementById('manage_domain_search_clear');
                 const manageDomainSubmit = document.getElementById('manage_domain_submit');
-                const hideManageSubdomains = document.getElementById('hide_manage_subdomains');
 
                 const updateManageSubmitState = () => {
                     if (!manageDomainSubmit) {
@@ -1775,103 +1889,14 @@ $outgoingLimitOptions = getOutgoingLimitOptions();
                     manageDomainSubmit.disabled = manageDomainField.disabled || !manageDomainField.value;
                 };
 
-                if (manageDomainSearch) {
-                    const domainOptions = Array.from(manageDomainField.options).map(option => ({
-                        value: option.value,
-                        text: option.dataset.label || option.textContent.trim(),
-                        selected: option.selected,
-                        depth: Number(option.dataset.depth || 0),
-                        isSubdomain: option.dataset.isSubdomain === 'true',
-                        root: option.dataset.root || option.value
-                    }));
-
-                    const realDomainOptions = domainOptions.filter(option => option.value !== '');
-
-                    const updateDomainHint = (visibleCount, totalCount, searchTerm, hideSubdomains, hiddenCount, selectedSubdomain) => {
-                        if (!manageDomainHint) {
-                            return;
-                        }
-
-                        if (searchTerm) {
-                            if (visibleCount === 0) {
-                                manageDomainHint.textContent = 'No hay dominios que coincidan con la búsqueda.';
-                                return;
-                            }
-
-                            manageDomainHint.textContent = `Mostrando ${visibleCount} de ${totalCount} dominio(s)${hideSubdomains ? `; ${hiddenCount} subdominio(s) oculto(s)` : ''}.`;
-                            return;
-                        }
-
-                        manageDomainHint.textContent = hideSubdomains
-                            ? `${realDomainOptions.filter(optionData => !optionData.isSubdomain).length} dominio(s) principal(es); ${hiddenCount} subdominio(s) oculto(s)${selectedSubdomain ? '; se conserva el seleccionado' : ''}.`
-                            : `${totalCount} dominio(s) disponibles, ordenados por jerarquía.`;
-                    };
-                    
-                    const renderDomainOptions = () => {
-                        const search = manageDomainSearch.value.trim().toLowerCase();
-                        const currentValue = manageDomainField.value;
-                        const hideSubdomains = hideManageSubdomains ? hideManageSubdomains.checked : false;
-                        const selectedSubdomain = hideSubdomains && realDomainOptions.some(optionData => optionData.value === currentValue && optionData.isSubdomain);
-                        const hiddenCount = hideSubdomains
-                            ? realDomainOptions.filter(optionData => optionData.isSubdomain && optionData.value !== currentValue).length
-                            : 0;
-                        const visibleDomains = realDomainOptions.filter(optionData => {
-                            if (hideSubdomains && optionData.isSubdomain && optionData.value !== currentValue) {
-                                return false;
-                            }
-
-                            if (!search) {
-                                return true;
-                            }
-
-                            return optionData.text.toLowerCase().includes(search) || optionData.value.toLowerCase().includes(search);
-                        });
-                        
-                        manageDomainField.innerHTML = '';
-                        const placeholder = document.createElement('option');
-                        placeholder.value = '';
-                        placeholder.textContent = visibleDomains.length > 0
-                            ? `Selecciona dominio (${visibleDomains.length})`
-                            : 'Sin dominios coincidentes';
-                        manageDomainField.appendChild(placeholder);
-
-                        visibleDomains.forEach(optionData => {
-                            const option = document.createElement('option');
-                            option.value = optionData.value;
-                            option.textContent = optionData.text;
-                            option.selected = optionData.value === currentValue;
-                            option.dataset.label = optionData.text;
-                            option.dataset.depth = String(optionData.depth);
-                            option.dataset.isSubdomain = optionData.isSubdomain ? 'true' : 'false';
-                            option.dataset.root = optionData.root;
-                            manageDomainField.appendChild(option);
-                        });
-                        
-                        if (currentValue && !Array.from(manageDomainField.options).some(option => option.value === currentValue)) {
-                            manageDomainField.value = '';
-                        }
-
-                        manageDomainField.disabled = visibleDomains.length === 0;
-                        updateDomainHint(visibleDomains.length, realDomainOptions.length, search, hideSubdomains, hiddenCount, selectedSubdomain);
-                        updateManageSubmitState();
-                    };
-                    
-                    manageDomainSearch.addEventListener('input', renderDomainOptions);
-
-                    if (manageDomainSearchClear) {
-                        manageDomainSearchClear.addEventListener('click', () => {
-                            manageDomainSearch.value = '';
-                            renderDomainOptions();
-                            manageDomainSearch.focus();
-                        });
-                    }
-
-                    if (hideManageSubdomains) {
-                        hideManageSubdomains.addEventListener('change', renderDomainOptions);
-                    }
-
-                    renderDomainOptions();
-                }
+                initHierarchicalDomainSelector({
+                    selectId: 'manage_domain',
+                    searchId: 'manage_domain_search',
+                    clearId: 'manage_domain_search_clear',
+                    hideId: 'hide_manage_subdomains',
+                    hintId: 'manage_domain_hint',
+                    onRender: updateManageSubmitState
+                });
                 
                 manageDomainField.addEventListener('change', async () => {
                     updateManageSubmitState();
@@ -1998,6 +2023,14 @@ $outgoingLimitOptions = getOutgoingLimitOptions();
 
         document.querySelectorAll('[data-tab-trigger]').forEach(button => {
             button.addEventListener('click', () => activateTab(button.dataset.tabTrigger));
+        });
+
+        initHierarchicalDomainSelector({
+            selectId: 'domain',
+            searchId: 'create_domain_search',
+            clearId: 'create_domain_search_clear',
+            hideId: 'hide_create_subdomains',
+            hintId: 'create_domain_hint'
         });
 
         const usernamesField = document.getElementById('usernames');
