@@ -503,6 +503,17 @@ code {
     margin-bottom: 0.4rem;
 }
 
+.form-group .domain-subdomain-toggle {
+    display: inline-flex;
+    margin: 0 0 0.5rem;
+    font-weight: 500;
+}
+
+.form-group .domain-subdomain-toggle input[type="checkbox"] {
+    width: 1.05rem;
+    padding: 0;
+}
+
 #manage_domain:disabled {
     background: var(--gray-100);
     color: var(--gray-500);
